@@ -4,7 +4,7 @@
 
 ## 🚀 Запуск скрипта через Roblox Executor
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/BlissOw/YBA_Farm/main/main.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/BlissOw/YBA_FARM/main/main.lua"))()
 ```
 
 ## ✨ Функционал

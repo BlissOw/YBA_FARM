@@ -84,7 +84,7 @@ pcall(function()
     end
 end)
 
--- Официальная таблица лимитов стаков (BaseMaxAmounts)
+-- Официальная таблица лимитов стаков спавнящихся предметов (Ровно 16 предметов)
 local BaseMaxAmounts = {
     ["Gold Coin"]                      = 45,
     ["Rokakaka"]                       = 25,
@@ -102,10 +102,6 @@ local BaseMaxAmounts = {
     ["Clackers"]                       = 10,
     ["Steel Ball"]                     = 10,
     ["Dio's Diary"]                    = 10,
-    ["Left Arm of The Saint's Corpse"] = 10,
-    ["Heart of The Saint's Corpse"]    = 10,
-    ["Pelvis of The Saint's Corpse"]   = 10,
-    ["Requiem Arrow"]                  = 10,
 }
 local ItemLimits = BaseMaxAmounts
 
@@ -127,10 +123,6 @@ local ItemPrices = {
     ["Gold Coin"]                      = 120,
     ["Lucky Arrow"]                    = 1000000, -- Бесценно: абсолютный приоритет
     ["Lucky Stone Mask"]               = 1000000, -- Бесценно: абсолютный приоритет
-    ["Left Arm of The Saint's Corpse"] = 500000,
-    ["Heart of The Saint's Corpse"]    = 500000,
-    ["Pelvis of The Saint's Corpse"]   = 500000,
-    ["Requiem Arrow"]                  = 500000,
 }
 
 local SellableItems = {
@@ -153,10 +145,6 @@ local SellableItems = {
 local KeepItems = {
     ["Lucky Arrow"] = true,
     ["Lucky Stone Mask"] = true,
-    ["Left Arm of The Saint's Corpse"] = true,
-    ["Heart of The Saint's Corpse"] = true,
-    ["Pelvis of The Saint's Corpse"] = true,
-    ["Requiem Arrow"] = true,
 }
 
 local PatrolPoints = {

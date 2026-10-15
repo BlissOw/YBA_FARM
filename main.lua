@@ -41,7 +41,7 @@ local LocalPlayer = Players.LocalPlayer
 -- 3. КОНФИГУРАЦИЯ И ПРЕДМЕТЫ
 -- =========================================================================
 local Config = {
-    Version = "v4.4 Stealth",
+    Version = "v4.5 Discord-Pro",
     TargetMoney = 1000000,          -- Целевой баланс: $1,000,000
     TargetArrows = 10,              -- Целевое кол-во Lucky Arrow: 10
     ArrowPrice = 75000,             -- Цена Lucky Arrow: $75,000
@@ -54,7 +54,35 @@ local Config = {
     MinSellBatch = 2,               -- Не бегать к торговцу ради 1 предмета
     MaxInventorySlots = 10,         -- Вместимость инвентаря без 2x Gamepass
     GrabTimeout = 1.2,              -- Максимальное ожидание подбора (сек)
+
+    -- Настройки Discord Webhook:
+    WebhookUrl = "",                -- Вставьте вашу ссылку Discord Webhook (или сохраните в BlissFarm_Config.json)
+    WebhookEnabled = true,          -- Отправка уведомлений в Discord
+    WebhookPingOnLucky = false,     -- Пинг @everyone при нахождении/покупке Lucky Arrow
+    WebhookReportInterval = 15,     -- Интервал регулярного отчёта (в минутах)
 }
+
+-- Авто-загрузка сохранённых настроек Discord Webhook (BlissFarm_Config.json)
+pcall(function()
+    if type(readfile) == "function" and type(isfile) == "function" and isfile("BlissFarm_Config.json") then
+        local raw = readfile("BlissFarm_Config.json")
+        local data = HttpService:JSONDecode(raw)
+        if type(data) == "table" then
+            if data.WebhookUrl and data.WebhookUrl ~= "" then
+                Config.WebhookUrl = data.WebhookUrl
+            end
+            if data.WebhookEnabled ~= nil then
+                Config.WebhookEnabled = data.WebhookEnabled
+            end
+            if data.WebhookPingOnLucky ~= nil then
+                Config.WebhookPingOnLucky = data.WebhookPingOnLucky
+            end
+            if data.WebhookReportInterval and tonumber(data.WebhookReportInterval) then
+                Config.WebhookReportInterval = tonumber(data.WebhookReportInterval)
+            end
+        end
+    end
+end)
 
 -- Официальная таблица лимитов стаков (BaseMaxAmounts)
 local BaseMaxAmounts = {
@@ -168,6 +196,8 @@ local State = {
     StartTime = tick(),
     StartMoney = nil,
     RaresFound = 0,
+    LastPhase = 1,
+    LastWebhookReport = tick(),
 }
 
 -- =========================================================================
@@ -224,6 +254,136 @@ local SafeClickButton = function(btn)
     end
 
     return clicked
+end
+
+-- =========================================================================
+-- 6. DISCORD WEBHOOK МОДУЛЬ (Rich Embeds & Notifications)
+-- =========================================================================
+local function sendDiscordWebhook(embedData, content)
+    if not Config.WebhookEnabled or not Config.WebhookUrl or Config.WebhookUrl == "" then
+        return false
+    end
+
+    local reqFunc = (type(request) == "function" and request)
+        or (type(http_request) == "function" and http_request)
+        or (syn and type(syn.request) == "function" and syn.request)
+        or (http and type(http.request) == "function" and http.request)
+
+    if not reqFunc then
+        return false
+    end
+
+    local payload = {
+        username = "⚡ Bliss Farm • YBA",
+        avatar_url = "https://raw.githubusercontent.com/BlissOw/YBA_FARM/main/icon.png",
+        content = content or "",
+        embeds = { embedData }
+    }
+
+    local success, jsonPayload = pcall(function()
+        return HttpService:JSONEncode(payload)
+    end)
+    if not success or not jsonPayload then return false end
+
+    task.spawn(function()
+        pcall(function()
+            reqFunc({
+                Url = Config.WebhookUrl,
+                Method = "POST",
+                Headers = {
+                    ["Content-Type"] = "application/json"
+                },
+                Body = jsonPayload
+            })
+        end)
+    end)
+    return true
+end
+
+local function Webhook_SendStartup()
+    local embed = {
+        title = "⚡ Bliss Farm " .. Config.Version .. " Успешно Запущен!",
+        description = string.format("Игрок: `%s`\nСервер: `%s`\nФарм в процессе...", LocalPlayer.Name, game.JobId ~= "" and game.JobId or "Public"),
+        color = 3447003, -- Синий
+        fields = {
+            { name = "🎯 Цели", value = "🏹 10 Lucky | 💰 $1,000,000 | 📦 16/16 Стаков", inline = false },
+            { name = "⏱ Интервал отчётов", value = Config.WebhookReportInterval .. " мин", inline = true },
+            { name = "🔔 Пинг @everyone", value = Config.WebhookPingOnLucky and "Включён" or "Выключен", inline = true }
+        },
+        footer = { text = "⚡ Bliss Farm • YBA by BlissOw" },
+        timestamp = DateTime.now():ToIsoDate()
+    }
+    sendDiscordWebhook(embed)
+end
+
+local function Webhook_SendLuckyArrow(source, count)
+    local embed = {
+        title = "🏹 LUCKY ARROW ПОЛУЧЕНА!",
+        description = string.format("**Способ:** %s\n**Игрок:** `%s`\n**Текущий запас:** **%d/10** Lucky Arrow",
+            source, LocalPlayer.Name, count),
+        color = 16766720, -- 0xFFD700 Золотой
+        fields = {
+            { name = "💰 Баланс", value = "$" .. tostring(getPlayerMoney()), inline = true },
+            { name = "⏱ Время сессии", value = math.floor((tick() - State.StartTime) / 60) .. " мин", inline = true },
+            { name = "📦 Собрано лута", value = tostring(State.TotalPicked) .. " шт.", inline = true },
+        },
+        footer = { text = "⚡ Bliss Farm • YBA God-Collector" },
+        timestamp = DateTime.now():ToIsoDate()
+    }
+    local ping = Config.WebhookPingOnLucky and "@everyone" or ""
+    sendDiscordWebhook(embed, ping)
+end
+
+local function Webhook_SendRareItem(name, count)
+    local embed = {
+        title = "🍀 ПОДНЯТ РЕДКИЙ ПРЕДМЕТ!",
+        description = string.format("**Предмет:** `%s`\n**В рюкзаке:** **%d/%d**\n**Игрок:** `%s`",
+            name, count, BaseMaxAmounts[name] or 10, LocalPlayer.Name),
+        color = 3066993, -- 0x2ECC71 Изумрудный
+        fields = {
+            { name = "💰 Баланс", value = "$" .. tostring(getPlayerMoney()), inline = true },
+            { name = "⏱ Сессия", value = math.floor((tick() - State.StartTime) / 60) .. " мин", inline = true }
+        },
+        footer = { text = "⚡ Bliss Farm • YBA" },
+        timestamp = DateTime.now():ToIsoDate()
+    }
+    sendDiscordWebhook(embed)
+end
+
+local function Webhook_SendMilestone(title, desc, color, pingEveryone)
+    local embed = {
+        title = title,
+        description = desc,
+        color = color or 65280,
+        fields = {
+            { name = "👤 Игрок", value = "`" .. LocalPlayer.Name .. "`", inline = true },
+            { name = "💰 Баланс", value = "$" .. tostring(getPlayerMoney()), inline = true },
+            { name = "🏹 Lucky Arrows", value = tostring(countLuckyArrows()) .. "/10", inline = true },
+        },
+        footer = { text = "⚡ Bliss Farm • YBA God-Collector" },
+        timestamp = DateTime.now():ToIsoDate()
+    }
+    local ping = pingEveryone and "@everyone" or ""
+    sendDiscordWebhook(embed, ping)
+end
+
+local function Webhook_SendReport(uptimeMinutes, sessionProfit, money, arrows, completedStacks, totalStacks)
+    local embed = {
+        title = "📊 Отчёт Bliss Farm о прогрессе",
+        description = string.format("Регулярный статус-отчёт фарма игрока `%s`", LocalPlayer.Name),
+        color = 5793266, -- 0x5865F2 Blurple
+        fields = {
+            { name = "⏱ Время работы", value = uptimeMinutes .. " мин", inline = true },
+            { name = "💵 Прибыль сессии", value = "+$" .. sessionProfit, inline = true },
+            { name = "💰 Текущий баланс", value = "$" .. money, inline = true },
+            { name = "🏹 Lucky Arrows", value = string.format("%d/%d", arrows, Config.TargetArrows), inline = true },
+            { name = "📦 Заполнено стаков", value = string.format("%d/%d", completedStacks, totalStacks), inline = true },
+            { name = "⚡ Всего поднято лута", value = tostring(State.TotalPicked) .. " шт.", inline = true },
+        },
+        footer = { text = "⚡ Bliss Farm • Авто-отчёт" },
+        timestamp = DateTime.now():ToIsoDate()
+    }
+    sendDiscordWebhook(embed)
 end
 
 -- =========================================================================
@@ -878,6 +1038,7 @@ local function buyLuckyArrow()
     task.wait(1.5)
     if countLuckyArrows() > before then
         updateStatus("✅ Куплена Lucky Arrow!", "Стрел: " .. countLuckyArrows() .. "/" .. Config.TargetArrows)
+        Webhook_SendLuckyArrow("Куплена в магазине", countLuckyArrows())
         return true
     end
     return false
@@ -997,6 +1158,11 @@ local function grabItem(item, name)
 
     if success and KeepItems[name] then
         State.RaresFound = State.RaresFound + 1
+        if name == "Lucky Arrow" then
+            Webhook_SendLuckyArrow("Найдена на карте!", countLuckyArrows())
+        else
+            Webhook_SendRareItem(name, countItem(name))
+        end
     end
 
     return success
@@ -1070,6 +1236,12 @@ local mainThread = task.spawn(function()
                     string.format("🏹 10/10 Lucky | 💰 $1,000,000 | 📦 %d/%d FULL", completedStacks, totalStacks),
                     "Абсолютный максимум достигнут!"
                 )
+                Webhook_SendMilestone(
+                    "🏆 GOD ACCOUNT ПОЛНОСТЬЮ ГОТОВ!",
+                    string.format("Абсолютный максимум достигнут для `%s`:\n🏹 10/10 Lucky Arrow\n💰 $1,000,000 Баланс\n📦 %d/%d Полных стаков предметов!\nСкрипт успешно завершил работу.", LocalPlayer.Name, completedStacks, totalStacks),
+                    10181046,
+                    true
+                )
                 break
 
             elseif not isArrowsGoalReached then
@@ -1091,6 +1263,16 @@ local mainThread = task.spawn(function()
 
             elseif not isMoneyGoalReached then
                 -- 🔹 ФАЗА 2: Накопление $1,000,000 (стрелы уже есть!)
+                if State.LastPhase < 2 then
+                    State.LastPhase = 2
+                    Webhook_SendMilestone(
+                        "🏹 ФАЗА 1 ЗАВЕРШЕНА: 10/10 LUCKY ARROW!",
+                        "Все 10 Lucky Arrow собраны и лежат в рюкзаке!\nПереходим к Фазе 2: Накопление $1,000,000.",
+                        16766720,
+                        false
+                    )
+                end
+
                 StatusLine1.Text = string.format("💰 [Фаза 2/3] Копим $1,000,000 ($%d)", money)
                 StatusLine2.Text = string.format("🏹 10/10 Lucky на базе! | 🎒 Продаваемых: %d/%d", sellCount, Config.SellThreshold)
 
@@ -1105,6 +1287,16 @@ local mainThread = task.spawn(function()
             else
                 -- 🔹 ФАЗА 3: Full Collector Mode (Добиваем ВСЕ стаки до упора!)
                 -- ТОРГОВЕЦ ОТКЛЮЧЕН — ни один предмет не продается!
+                if State.LastPhase < 3 then
+                    State.LastPhase = 3
+                    Webhook_SendMilestone(
+                        "💰 ФАЗА 2 ЗАВЕРШЕНА: $1,000,000 НА СЧЕТУ!",
+                        "Целевой баланс $1,000,000 успешно накоплен!\nТорговец ОТКЛЮЧЕН. Переходим к Фазе 3: Сбор всех 16 стаков до упора.",
+                        65280,
+                        false
+                    )
+                end
+
                 StatusLine1.Text = string.format("📦 [Фаза 3/3] Фулл-стаки: %d/%d заполнено", completedStacks, totalStacks)
                 StatusLine2.Text = string.format("🏹 10 Lucky | 💰 $1M кап | Торговец ОТКЛЮЧЕН")
 
@@ -1131,6 +1323,32 @@ local hopThread = task.spawn(function()
     end
 end)
 table.insert(RunningThreads, hopThread)
+
+-- Поток периодических отчётов в Discord
+local webhookReportThread = task.spawn(function()
+    task.wait(10)
+    if Config.WebhookEnabled and Config.WebhookUrl ~= "" then
+        pcall(Webhook_SendStartup)
+    end
+
+    while not CleaningUp do
+        task.wait(60)
+        if Config.WebhookEnabled and Config.WebhookUrl ~= "" and not CleaningUp then
+            if tick() - State.LastWebhookReport >= (Config.WebhookReportInterval * 60) then
+                State.LastWebhookReport = tick()
+                local money = getPlayerMoney()
+                local arrows = countLuckyArrows()
+                local completedStacks, totalStacks = countCompletedStacks()
+                local uptimeMinutes = math.floor((tick() - State.StartTime) / 60)
+                local sessionProfit = math.max(0, money - (State.StartMoney or money))
+                pcall(function()
+                    Webhook_SendReport(uptimeMinutes, sessionProfit, money, arrows, completedStacks, totalStacks)
+                end)
+            end
+        end
+    end
+end)
+table.insert(RunningThreads, webhookReportThread)
 
 -- =========================================================================
 -- 16. ФУНКЦИЯ ДЛЯ ГЛОБАЛЬНОЙ ВЫГРУЗКИ (Clean Unload Handler)

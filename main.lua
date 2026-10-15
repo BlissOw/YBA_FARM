@@ -175,6 +175,9 @@ local State = {
     Humanoid = nil,
     RootPart = nil,
     RemoteEvent = nil,
+    RemoteFunction = nil,
+    LastKnownMoney = 0,
+    BuyFails = 0,
     Blacklist = {},
     LastLootTime = tick(),
     TotalPicked = 0,
@@ -401,6 +404,9 @@ local function refreshCharacter()
     State.Humanoid = char:WaitForChild("Humanoid", 10)
     State.RootPart = char:WaitForChild("HumanoidRootPart", 10)
     State.RemoteEvent = char:WaitForChild("RemoteEvent", 10)
+    pcall(function()
+        State.RemoteFunction = char:FindFirstChild("RemoteFunction") or char:WaitForChild("RemoteFunction", 2)
+    end)
 end
 
 refreshCharacter()
@@ -1196,22 +1202,105 @@ local function countCompletedStacks()
 end
 
 local function getPlayerMoney()
-    local best = 0
+    -- 1. Чтение из объектов данных игрока (IntValue / NumberValue / Attributes)
+    local function checkObj(obj)
+        if not obj then return nil end
+        for _, name in ipairs({"Money", "Cash", "Yen", "Currency", "Wallet", "Balance"}) do
+            local v = obj:FindFirstChild(name)
+            if v and (v:IsA("IntValue") or v:IsA("NumberValue")) and v.Value and v.Value > 0 then
+                return v.Value
+            end
+        end
+        return nil
+    end
+
+    local val = checkObj(LocalPlayer)
+        or checkObj(LocalPlayer:FindFirstChild("leaderstats"))
+        or checkObj(LocalPlayer:FindFirstChild("PlayerStats"))
+        or checkObj(LocalPlayer:FindFirstChild("PlayerData"))
+        or checkObj(LocalPlayer:FindFirstChild("Data"))
+    if val and val > 0 then
+        State.LastKnownMoney = val
+        return val
+    end
+
+    local attr = LocalPlayer:GetAttribute("Money")
+        or LocalPlayer:GetAttribute("Cash")
+        or LocalPlayer:GetAttribute("Yen")
+    if type(attr) == "number" and attr > 0 then
+        State.LastKnownMoney = attr
+        return attr
+    end
+
+    -- 2. Чтение из PlayerGui (YBA HUD)
     local pgui = LocalPlayer:FindFirstChild("PlayerGui")
-    if pgui then
-        for _, d in ipairs(pgui:GetDescendants()) do
-            if d:IsA("TextLabel") and not d:IsDescendantOf(ScreenGui) then
-                local txt = d.Text
-                if txt:find("$", 1, true) and txt:match("^%s*%$?%s*[%d,]+%s*$") then
-                    local v = tonumber(txt:gsub("[^%d]", ""))
-                    if v and v > best then
-                        best = v
+    if not pgui then return State.LastKnownMoney or 0 end
+
+    -- Поиск по специфичным названиям рамок/лейблов YBA (HUD -> Money / DropMoney / Cash)
+    for _, d in ipairs(pgui:GetDescendants()) do
+        if d:IsA("TextLabel") and not d:IsDescendantOf(ScreenGui) then
+            local pName = d.Parent and d.Parent.Name:lower() or ""
+            local dName = d.Name:lower()
+            if dName:find("money") or dName:find("cash") or dName:find("dropmoney") or dName:find("currency")
+               or pName:find("money") or pName:find("cash") or pName:find("dropmoney") or pName:find("currency") then
+                local txt = d.Text or ""
+                -- Игнорируем всплывающий индикатор продажи вроде "+1200"
+                if not txt:find("^%s*[%+]") then
+                    local digits = txt:match("[%d,]+")
+                    if digits then
+                        local num = tonumber(digits:gsub(",", ""))
+                        if num and num >= 0 and num <= 2000000 then
+                            State.LastKnownMoney = num
+                            return num
+                        end
                     end
                 end
             end
         end
     end
-    return best
+
+    -- Поиск текста со знаком $ (например: "$75022" или "$ 75,022")
+    for _, d in ipairs(pgui:GetDescendants()) do
+        if d:IsA("TextLabel") and not d:IsDescendantOf(ScreenGui) and d.Visible then
+            local txt = d.Text or ""
+            if txt:find("$", 1, true) and not txt:find("^%s*[%+]") then
+                local digits = txt:match("[%d,]+")
+                if digits then
+                    local num = tonumber(digits:gsub(",", ""))
+                    if num and num >= 0 and num <= 2000000 then
+                        State.LastKnownMoney = num
+                        return num
+                    end
+                end
+            end
+        end
+    end
+
+    -- 3. Умный поиск числа на экране HUD (в YBA баланс отображается рядом с иконкой $)
+    local best = 0
+    for _, d in ipairs(pgui:GetDescendants()) do
+        if d:IsA("TextLabel") and not d:IsDescendantOf(ScreenGui) and d.Visible then
+            local txt = d.Text or ""
+            -- Исключаем таймеры (29:21:19), версии (v1.8), пинг, индикаторы прибавки (+1200)
+            if not txt:find(":") and not txt:find("v%d") and not txt:find("%%") and not txt:find("^%s*[%+]") and not txt:find("Region") and not txt:find("Age") then
+                local clean = txt:match("^%s*([%d,]+)%s*$")
+                if clean then
+                    local num = tonumber(clean:gsub(",", ""))
+                    -- Исключаем уровень игрока (1..50)
+                    if num and num > 50 and num <= 1000000 and num > best then
+                        best = num
+                    end
+                end
+            end
+        end
+    end
+
+    if best > 0 then
+        State.LastKnownMoney = best
+        return best
+    end
+
+    return State.LastKnownMoney or 0
 end
 
 -- =========================================================================
@@ -1456,21 +1545,80 @@ end
 -- 13. ПОКУПКА ПРЕДМЕТОВ (Lucky Arrow)
 -- =========================================================================
 local function buyLuckyArrow()
-    if getPlayerMoney() < Config.ArrowPrice then return false end
+    local currentMoney = getPlayerMoney()
+    if currentMoney < Config.ArrowPrice and (State.LastKnownMoney or 0) < Config.ArrowPrice then 
+        return false 
+    end
+
     local before = countLuckyArrows()
-    updateStatus("🛒 Покупка Lucky Arrow", "Стрел: " .. before .. "/" .. Config.TargetArrows)
+    updateStatus("🛒 Покупка Lucky Arrow", "Баланс: $" .. currentMoney .. " | Стрел: " .. before .. "/" .. Config.TargetArrows)
+
+    -- Способ 1: Прямой RemoteEvent персонажа (каноничный YBA вызов)
     if State.RemoteEvent then
         pcall(function()
             State.RemoteEvent:FireServer("PurchaseShopItem", {ItemName = "1x Lucky Arrow"}, 1, 2)
         end)
+        pcall(function()
+            State.RemoteEvent:FireServer("PurchaseShopItem", {ItemName = "Lucky Arrow"}, 1, 2)
+        end)
+        pcall(function()
+            State.RemoteEvent:FireServer("PurchaseShopItem", "1x Lucky Arrow", 1)
+        end)
+        pcall(function()
+            State.RemoteEvent:FireServer("PurchaseShopItem", "Lucky Arrow", 1)
+        end)
+        pcall(function()
+            State.RemoteEvent:FireServer("BuyShopItem", "Lucky Arrow")
+        end)
+        pcall(function()
+            State.RemoteEvent:FireServer("BuyItem", "Lucky Arrow")
+        end)
     end
+
+    -- Способ 2: RemoteFunction персонажа (если магазин использует InvokeServer)
+    if State.RemoteFunction then
+        pcall(function()
+            State.RemoteFunction:InvokeServer("PurchaseShopItem", {ItemName = "1x Lucky Arrow"}, 1, 2)
+        end)
+        pcall(function()
+            State.RemoteFunction:InvokeServer("PurchaseShopItem", {ItemName = "Lucky Arrow"}, 1, 2)
+        end)
+        pcall(function()
+            State.RemoteFunction:InvokeServer("ItemShop", "Lucky Arrow")
+        end)
+        pcall(function()
+            State.RemoteFunction:InvokeServer("BuyItem", "Lucky Arrow")
+        end)
+    end
+
+    -- Способ 3: Авто-клик по интерфейсу магазина в PlayerGui (если открыт или есть кнопки)
+    pcall(function()
+        local pgui = LocalPlayer:FindFirstChild("PlayerGui")
+        if not pgui then return end
+        for _, btn in ipairs(pgui:GetDescendants()) do
+            if (btn:IsA("TextButton") or btn:IsA("ImageButton")) and not btn:IsDescendantOf(ScreenGui) then
+                local bTxt = (btn:IsA("TextButton") and btn.Text:lower()) or ""
+                local bName = btn.Name:lower()
+                -- Поиск кнопки покупки лаки стрелы
+                if (bTxt:find("lucky arrow") or bName:find("lucky")) and (bTxt:find("buy") or bTxt:find("75") or bName:find("buy")) then
+                    SafeClickButton(btn)
+                    break
+                end
+            end
+        end
+    end)
+
     task.wait(1.5)
-    if countLuckyArrows() > before then
-        updateStatus("✅ Куплена Lucky Arrow!", "Стрел: " .. countLuckyArrows() .. "/" .. Config.TargetArrows)
-        Webhook_SendLuckyArrow("Куплена в магазине", countLuckyArrows())
+    local after = countLuckyArrows()
+    if after > before then
+        State.BuyFails = 0
+        updateStatus("✅ Куплена Lucky Arrow!", "Стрел: " .. after .. "/" .. Config.TargetArrows)
+        Webhook_SendLuckyArrow("Куплена в магазине ($75,000)", after)
         return true
+    else
+        State.BuyFails = (State.BuyFails or 0) + 1
+        return false
     end
-    return false
 end
 
 -- =========================================================================

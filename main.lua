@@ -415,7 +415,7 @@ trackConnection(LocalPlayer.CharacterAdded:Connect(function()
 end))
 
 -- =========================================================================
--- 8. ИНТЕРФЕЙС (GUI) С ПОДДЕРЖКОЙ DRAG & DROP
+-- 8. ПРЕМИАЛЬНЫЙ ФИОЛЕТОВЫЙ ИНТЕРФЕЙС (Purple Neon Tabs & Mascot Toggle)
 -- =========================================================================
 local targetGuiParent = LocalPlayer:WaitForChild("PlayerGui")
 pcall(function()
@@ -430,94 +430,534 @@ for _, g in ipairs(targetGuiParent:GetChildren()) do
     end
 end
 
+-- Загрузка локального ассета маскота (если эксплоит поддерживает getcustomasset)
+local LogoAssetId = nil
+pcall(function()
+    local logoFileName = "bliss_demon_logo.png"
+    if type(writefile) == "function" and type(readfile) == "function" and type(getcustomasset) == "function" then
+        if not (type(isfile) == "function" and isfile(logoFileName)) then
+            local rawImage = game:HttpGet("https://raw.githubusercontent.com/BlissOw/YBA_FARM/main/assets/logo.png?v=2")
+            writefile(logoFileName, rawImage)
+        end
+        LogoAssetId = getcustomasset(logoFileName)
+    end
+end)
+
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "BlissFarmUI"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
+-- 🔘 ПЛАВАЮЩАЯ КНОПКА-МАСКОТ (ОТКРЫВАШКА / ЗАКРЫВАШКА ДЛЯ ТЕЛЕФОНОВ И ПК)
+local FloatingToggle = Instance.new("ImageButton")
+FloatingToggle.Name = "FloatingMascotToggle"
+FloatingToggle.Size = UDim2.new(0, 52, 0, 52)
+FloatingToggle.Position = UDim2.new(0, 18, 0.45, 0)
+FloatingToggle.BackgroundColor3 = Color3.fromRGB(18, 12, 28)
+FloatingToggle.BackgroundTransparency = 0.05
+FloatingToggle.BorderSizePixel = 0
+FloatingToggle.AutoButtonColor = true
+
+local FloatCorner = Instance.new("UICorner")
+FloatCorner.CornerRadius = UDim.new(1, 0)
+FloatCorner.Parent = FloatingToggle
+
+local FloatStroke = Instance.new("UIStroke")
+FloatStroke.Thickness = 2.2
+FloatStroke.Color = Color3.fromRGB(168, 85, 247) -- Неоновый фиолетовый
+FloatStroke.Parent = FloatingToggle
+
+if LogoAssetId then
+    FloatingToggle.Image = LogoAssetId
+    FloatingToggle.ScaleType = Enum.ScaleType.Fit
+else
+    local FallbackIcon = Instance.new("TextLabel")
+    FallbackIcon.Size = UDim2.new(1, 0, 1, 0)
+    FallbackIcon.BackgroundTransparency = 1
+    FallbackIcon.Text = "😈"
+    FallbackIcon.TextSize = 28
+    FallbackIcon.Parent = FloatingToggle
+end
+
+-- Перетаскивание плавающей кнопки с защитой от ложного клика
+local fDrag, fDragInput, fDragStart, fStartPos
+local fHasMoved = false
+
+trackConnection(FloatingToggle.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        fDrag = true
+        fDragStart = input.Position
+        fStartPos = FloatingToggle.Position
+        fHasMoved = false
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                fDrag = false
+            end
+        end)
+    end
+end))
+
+trackConnection(FloatingToggle.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        fDragInput = input
+    end
+end))
+
+trackConnection(game:GetService("UserInputService").InputChanged:Connect(function(input)
+    if input == fDragInput and fDrag then
+        local delta = input.Position - fDragStart
+        if (delta.X * delta.X + delta.Y * delta.Y) > 36 then
+            fHasMoved = true
+        end
+        FloatingToggle.Position = UDim2.new(
+            fStartPos.X.Scale,
+            fStartPos.X.Offset + delta.X,
+            fStartPos.Y.Scale,
+            fStartPos.Y.Offset + delta.Y
+        )
+    end
+end))
+
+-- Подсветка при наведении
+trackConnection(FloatingToggle.MouseEnter:Connect(function()
+    FloatStroke.Color = Color3.fromRGB(220, 180, 255)
+    FloatStroke.Thickness = 3
+end))
+trackConnection(FloatingToggle.MouseLeave:Connect(function()
+    FloatStroke.Color = Color3.fromRGB(168, 85, 247)
+    FloatStroke.Thickness = 2.2
+end))
+
+-- 🌌 ГЛАВНОЕ ОКНО ХАБА
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 340, 0, 95)
-MainFrame.Position = UDim2.new(0, 15, 0, 85)
-MainFrame.BackgroundColor3 = Color3.fromRGB(15, 17, 26)
-MainFrame.BackgroundTransparency = 0.15
+MainFrame.Size = UDim2.new(0, 430, 0, 240)
+MainFrame.Position = UDim2.new(0.5, -215, 0.5, -120)
+MainFrame.BackgroundColor3 = Color3.fromRGB(16, 12, 24)
+MainFrame.BackgroundTransparency = 0.08
 MainFrame.BorderSizePixel = 0
 MainFrame.ClipsDescendants = true
 
 local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 10)
+MainCorner.CornerRadius = UDim.new(0, 12)
 MainCorner.Parent = MainFrame
 
 local MainStroke = Instance.new("UIStroke")
-MainStroke.Thickness = 1.2
-MainStroke.Color = Color3.fromRGB(50, 56, 82)
+MainStroke.Thickness = 1.8
+MainStroke.Color = Color3.fromRGB(168, 85, 247)
 MainStroke.Parent = MainFrame
+
+-- Нажатие на кнопку-маскот открывает / закрывает окно (если не тащили)
+trackConnection(FloatingToggle.MouseButton1Click:Connect(function()
+    if not fHasMoved then
+        MainFrame.Visible = not MainFrame.Visible
+    end
+end))
+
+-- Верхняя панель (Header)
+local Header = Instance.new("Frame")
+Header.Name = "Header"
+Header.Size = UDim2.new(1, 0, 0, 36)
+Header.BackgroundColor3 = Color3.fromRGB(24, 18, 38)
+Header.BorderSizePixel = 0
+Header.Parent = MainFrame
+
+local HeaderCorner = Instance.new("UICorner")
+HeaderCorner.CornerRadius = UDim.new(0, 12)
+HeaderCorner.Parent = Header
+
+if LogoAssetId then
+    local HeaderMascot = Instance.new("ImageLabel")
+    HeaderMascot.Size = UDim2.new(0, 26, 0, 26)
+    HeaderMascot.Position = UDim2.new(0, 8, 0, 5)
+    HeaderMascot.BackgroundTransparency = 1
+    HeaderMascot.Image = LogoAssetId
+    HeaderMascot.ScaleType = Enum.ScaleType.Fit
+    HeaderMascot.Parent = Header
+end
 
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
-TitleLabel.Size = UDim2.new(1, -50, 0, 20)
-TitleLabel.Position = UDim2.new(0, 12, 0, 8)
+TitleLabel.Size = LogoAssetId and UDim2.new(1, -148, 1, 0) or UDim2.new(1, -120, 1, 0)
+TitleLabel.Position = LogoAssetId and UDim2.new(0, 38, 0, 0) or UDim2.new(0, 14, 0, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.TextColor3 = Color3.fromRGB(255, 204, 77)
-TitleLabel.TextSize = 13
+TitleLabel.TextColor3 = Color3.fromRGB(216, 180, 254)
+TitleLabel.TextSize = 14
 TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.Text = "⚡ BLISS FARM • " .. Config.Version
-TitleLabel.Parent = MainFrame
+TitleLabel.Text = "⚡ BLISS FARM • YBA God-Collector"
+TitleLabel.Parent = Header
 
+-- Кнопка Старт/Пауза
 local ToggleButton = Instance.new("TextButton")
 ToggleButton.Name = "ToggleButton"
-ToggleButton.Size = UDim2.new(0, 30, 0, 22)
-ToggleButton.Position = UDim2.new(1, -40, 0, 7)
-ToggleButton.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
+ToggleButton.Size = UDim2.new(0, 28, 0, 22)
+ToggleButton.Position = UDim2.new(1, -72, 0, 7)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
 ToggleButton.Text = "■"
 ToggleButton.TextColor3 = Color3.new(1, 1, 1)
 ToggleButton.TextSize = 13
 ToggleButton.Font = Enum.Font.GothamBold
 ToggleButton.BorderSizePixel = 0
-ToggleButton.Parent = MainFrame
+ToggleButton.Parent = Header
 
 local BtnCorner = Instance.new("UICorner")
 BtnCorner.CornerRadius = UDim.new(0, 6)
 BtnCorner.Parent = ToggleButton
 
+-- Кнопка скрыть меню (X)
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Name = "CloseBtn"
+CloseBtn.Size = UDim2.new(0, 28, 0, 22)
+CloseBtn.Position = UDim2.new(1, -38, 0, 7)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(38, 28, 54)
+CloseBtn.Text = "×"
+CloseBtn.TextColor3 = Color3.fromRGB(200, 180, 220)
+CloseBtn.TextSize = 16
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.BorderSizePixel = 0
+CloseBtn.Parent = Header
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 6)
+CloseCorner.Parent = CloseBtn
+
+trackConnection(CloseBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+end))
+
+-- Панель навигации по вкладкам (Tabs Bar)
+local TabBar = Instance.new("Frame")
+TabBar.Name = "TabBar"
+TabBar.Size = UDim2.new(1, -20, 0, 28)
+TabBar.Position = UDim2.new(0, 10, 0, 42)
+TabBar.BackgroundColor3 = Color3.fromRGB(22, 16, 34)
+TabBar.BorderSizePixel = 0
+TabBar.Parent = MainFrame
+
+local TabBarCorner = Instance.new("UICorner")
+TabBarCorner.CornerRadius = UDim.new(0, 8)
+TabBarCorner.Parent = TabBar
+
+local Tabs = {}
+local TabPages = {}
+
+local function createTabButton(name, icon, index, totalTabs)
+    local btn = Instance.new("TextButton")
+    btn.Name = "Tab_" .. name
+    btn.Size = UDim2.new(1 / totalTabs, -4, 1, -4)
+    btn.Position = UDim2.new((index - 1) * (1 / totalTabs), 2, 0, 2)
+    btn.BackgroundColor3 = (index == 1) and Color3.fromRGB(147, 51, 234) or Color3.fromRGB(28, 20, 44)
+    btn.Text = icon .. " " .. name
+    btn.TextColor3 = Color3.fromRGB(240, 230, 255)
+    btn.TextSize = 11
+    btn.Font = Enum.Font.GothamBold
+    btn.BorderSizePixel = 0
+    btn.Parent = TabBar
+
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 6)
+    c.Parent = btn
+
+    local page = Instance.new("Frame")
+    page.Name = "Page_" .. name
+    page.Size = UDim2.new(1, -20, 1, -80)
+    page.Position = UDim2.new(0, 10, 0, 74)
+    page.BackgroundTransparency = 1
+    page.Visible = (index == 1)
+    page.Parent = MainFrame
+
+    Tabs[index] = btn
+    TabPages[index] = page
+
+    trackConnection(btn.MouseButton1Click:Connect(function()
+        for i, b in ipairs(Tabs) do
+            b.BackgroundColor3 = (i == index) and Color3.fromRGB(147, 51, 234) or Color3.fromRGB(28, 20, 44)
+            TabPages[i].Visible = (i == index)
+        end
+    end))
+
+    return page
+end
+
+local PageDashboard = createTabButton("Главная", "📊", 1, 4)
+local PageWebhook   = createTabButton("Discord", "📢", 2, 4)
+local PageSettings  = createTabButton("Опции", "⚙️", 3, 4)
+local PageAbout     = createTabButton("Автор", "👑", 4, 4)
+
+-- ═════════════════════════════════════════════════════════════════════════
+-- ВКЛАДКА 1: ДАШБОРД (Dashboard)
+-- ═════════════════════════════════════════════════════════════════════════
 local StatusLine1 = Instance.new("TextLabel")
-StatusLine1.Size = UDim2.new(1, -24, 0, 16)
-StatusLine1.Position = UDim2.new(0, 12, 0, 30)
-StatusLine1.BackgroundTransparency = 1
-StatusLine1.TextXAlignment = Enum.TextXAlignment.Left
-StatusLine1.TextColor3 = Color3.fromRGB(140, 255, 150)
-StatusLine1.TextSize = 11
-StatusLine1.Font = Enum.Font.GothamSemibold
-StatusLine1.TextWrapped = true
-StatusLine1.Text = "🚀 Быстрый сбор активирован"
-StatusLine1.Parent = MainFrame
+StatusLine1.Size = UDim2.new(1, 0, 0, 24)
+StatusLine1.Position = UDim2.new(0, 0, 0, 6)
+StatusLine1.BackgroundColor3 = Color3.fromRGB(26, 18, 42)
+StatusLine1.TextColor3 = Color3.fromRGB(216, 180, 254)
+StatusLine1.TextSize = 12
+StatusLine1.Font = Enum.Font.GothamBold
+StatusLine1.Text = "🚀 Инициализация системы..."
+StatusLine1.Parent = PageDashboard
+
+local S1Corner = Instance.new("UICorner")
+S1Corner.CornerRadius = UDim.new(0, 6)
+S1Corner.Parent = StatusLine1
 
 local StatusLine2 = Instance.new("TextLabel")
-StatusLine2.Size = UDim2.new(1, -24, 0, 16)
-StatusLine2.Position = UDim2.new(0, 12, 0, 50)
+StatusLine2.Size = UDim2.new(1, 0, 0, 22)
+StatusLine2.Position = UDim2.new(0, 0, 0, 36)
 StatusLine2.BackgroundTransparency = 1
 StatusLine2.TextXAlignment = Enum.TextXAlignment.Left
-StatusLine2.TextColor3 = Color3.fromRGB(175, 180, 200)
+StatusLine2.TextColor3 = Color3.fromRGB(192, 132, 252)
 StatusLine2.TextSize = 11
-StatusLine2.Font = Enum.Font.Gotham
-StatusLine2.TextWrapped = true
-StatusLine2.Text = "🎒 0/10 | 🏹 0/10 | 💰 $0"
-StatusLine2.Parent = MainFrame
+StatusLine2.Font = Enum.Font.GothamSemibold
+StatusLine2.Text = "💰 Баланс: $0 | 🏹 Lucky: 0/10"
+StatusLine2.Parent = PageDashboard
 
 local StatusLine3 = Instance.new("TextLabel")
-StatusLine3.Size = UDim2.new(1, -24, 0, 16)
-StatusLine3.Position = UDim2.new(0, 12, 0, 70)
+StatusLine3.Size = UDim2.new(1, 0, 0, 22)
+StatusLine3.Position = UDim2.new(0, 0, 0, 60)
 StatusLine3.BackgroundTransparency = 1
 StatusLine3.TextXAlignment = Enum.TextXAlignment.Left
-StatusLine3.TextColor3 = Color3.fromRGB(210, 215, 235)
+StatusLine3.TextColor3 = Color3.fromRGB(240, 240, 255)
 StatusLine3.TextSize = 11
 StatusLine3.Font = Enum.Font.Gotham
-StatusLine3.TextWrapped = true
-StatusLine3.Text = ""
-StatusLine3.Parent = MainFrame
+StatusLine3.Text = "⏱ 0m | 💵 +$0 сессия | 🍀 Рарки: 0"
+StatusLine3.Parent = PageDashboard
 
--- Drag and Drop
+local ActionBadge = Instance.new("TextLabel")
+ActionBadge.Size = UDim2.new(1, 0, 0, 36)
+ActionBadge.Position = UDim2.new(0, 0, 0, 92)
+ActionBadge.BackgroundColor3 = Color3.fromRGB(24, 16, 38)
+ActionBadge.TextColor3 = Color3.fromRGB(168, 85, 247)
+ActionBadge.TextSize = 11
+ActionBadge.Font = Enum.Font.Gotham
+ActionBadge.Text = "✨ Stealth Anti-Kick активен • Поиск лута..."
+ActionBadge.Parent = PageDashboard
+
+local BadgeCorner = Instance.new("UICorner")
+BadgeCorner.CornerRadius = UDim.new(0, 6)
+BadgeCorner.Parent = ActionBadge
+
+-- ═════════════════════════════════════════════════════════════════════════
+-- ВКЛАДКА 2: DISCORD WEBHOOK
+-- ═════════════════════════════════════════════════════════════════════════
+local WebhookDesc = Instance.new("TextLabel")
+WebhookDesc.Size = UDim2.new(1, 0, 0, 18)
+WebhookDesc.Position = UDim2.new(0, 0, 0, 4)
+WebhookDesc.BackgroundTransparency = 1
+WebhookDesc.TextXAlignment = Enum.TextXAlignment.Left
+WebhookDesc.TextColor3 = Color3.fromRGB(216, 180, 254)
+WebhookDesc.TextSize = 11
+WebhookDesc.Font = Enum.Font.GothamBold
+WebhookDesc.Text = "Ссылка на ваш Discord Webhook:"
+WebhookDesc.Parent = PageWebhook
+
+local WebhookBox = Instance.new("TextBox")
+WebhookBox.Name = "WebhookInput"
+WebhookBox.Size = UDim2.new(1, 0, 0, 28)
+WebhookBox.Position = UDim2.new(0, 0, 0, 24)
+WebhookBox.BackgroundColor3 = Color3.fromRGB(26, 18, 42)
+WebhookBox.TextColor3 = Color3.fromRGB(240, 240, 255)
+WebhookBox.PlaceholderColor3 = Color3.fromRGB(120, 100, 150)
+WebhookBox.PlaceholderText = "https://discord.com/api/webhooks/..."
+WebhookBox.Text = Config.WebhookUrl or ""
+WebhookBox.TextSize = 10
+WebhookBox.Font = Enum.Font.Gotham
+WebhookBox.ClearTextOnFocus = false
+WebhookBox.BorderSizePixel = 0
+WebhookBox.Parent = PageWebhook
+
+local BoxCorner = Instance.new("UICorner")
+BoxCorner.CornerRadius = UDim.new(0, 6)
+BoxCorner.Parent = WebhookBox
+
+local BoxStroke = Instance.new("UIStroke")
+BoxStroke.Color = Color3.fromRGB(147, 51, 234)
+BoxStroke.Thickness = 1
+BoxStroke.Parent = WebhookBox
+
+local WebhookStatus = Instance.new("TextLabel")
+WebhookStatus.Size = UDim2.new(1, 0, 0, 16)
+WebhookStatus.Position = UDim2.new(0, 0, 0, 56)
+WebhookStatus.BackgroundTransparency = 1
+WebhookStatus.TextXAlignment = Enum.TextXAlignment.Left
+WebhookStatus.TextColor3 = Color3.fromRGB(134, 239, 172)
+WebhookStatus.TextSize = 10
+WebhookStatus.Font = Enum.Font.Gotham
+WebhookStatus.Text = (Config.WebhookUrl ~= "") and "✅ Webhook настроен" or "⚠️ Webhook не указан"
+WebhookStatus.Parent = PageWebhook
+
+-- Кнопки Сохранить и Тест
+local SaveWebhookBtn = Instance.new("TextButton")
+SaveWebhookBtn.Size = UDim2.new(0.48, 0, 0, 28)
+SaveWebhookBtn.Position = UDim2.new(0, 0, 0, 80)
+SaveWebhookBtn.BackgroundColor3 = Color3.fromRGB(147, 51, 234)
+SaveWebhookBtn.TextColor3 = Color3.new(1, 1, 1)
+SaveWebhookBtn.Text = "💾 Сохранить Webhook"
+SaveWebhookBtn.TextSize = 11
+SaveWebhookBtn.Font = Enum.Font.GothamBold
+SaveWebhookBtn.BorderSizePixel = 0
+SaveWebhookBtn.Parent = PageWebhook
+
+local SwCorner = Instance.new("UICorner")
+SwCorner.CornerRadius = UDim.new(0, 6)
+SwCorner.Parent = SaveWebhookBtn
+
+local TestWebhookBtn = Instance.new("TextButton")
+TestWebhookBtn.Size = UDim2.new(0.48, 0, 0, 28)
+TestWebhookBtn.Position = UDim2.new(0.52, 0, 0, 80)
+TestWebhookBtn.BackgroundColor3 = Color3.fromRGB(38, 26, 60)
+TestWebhookBtn.TextColor3 = Color3.fromRGB(216, 180, 254)
+TestWebhookBtn.Text = "🚀 Отправить Тест"
+TestWebhookBtn.TextSize = 11
+TestWebhookBtn.Font = Enum.Font.GothamBold
+TestWebhookBtn.BorderSizePixel = 0
+TestWebhookBtn.Parent = PageWebhook
+
+local TwCorner = Instance.new("UICorner")
+TwCorner.CornerRadius = UDim.new(0, 6)
+TwCorner.Parent = TestWebhookBtn
+
+local PingToggleBtn = Instance.new("TextButton")
+PingToggleBtn.Size = UDim2.new(1, 0, 0, 24)
+PingToggleBtn.Position = UDim2.new(0, 0, 0, 116)
+PingToggleBtn.BackgroundColor3 = Color3.fromRGB(24, 16, 38)
+PingToggleBtn.TextColor3 = Color3.fromRGB(200, 190, 220)
+PingToggleBtn.Text = "🔔 Пинг @everyone при Lucky: " .. (Config.WebhookPingOnLucky and "ВКЛ" or "ВЫКЛ")
+PingToggleBtn.TextSize = 10
+PingToggleBtn.Font = Enum.Font.Gotham
+PingToggleBtn.BorderSizePixel = 0
+PingToggleBtn.Parent = PageWebhook
+
+local PtCorner = Instance.new("UICorner")
+PtCorner.CornerRadius = UDim.new(0, 6)
+PtCorner.Parent = PingToggleBtn
+
+trackConnection(PingToggleBtn.MouseButton1Click:Connect(function()
+    Config.WebhookPingOnLucky = not Config.WebhookPingOnLucky
+    PingToggleBtn.Text = "🔔 Пинг @everyone при Lucky: " .. (Config.WebhookPingOnLucky and "ВКЛ" or "ВЫКЛ")
+end))
+
+trackConnection(SaveWebhookBtn.MouseButton1Click:Connect(function()
+    Config.WebhookUrl = WebhookBox.Text:gsub("%s+", "")
+    pcall(function()
+        if type(writefile) == "function" then
+            local toSave = {
+                WebhookUrl = Config.WebhookUrl,
+                WebhookEnabled = Config.WebhookEnabled,
+                WebhookPingOnLucky = Config.WebhookPingOnLucky,
+                WebhookReportInterval = Config.WebhookReportInterval,
+            }
+            writefile("BlissFarm_Config.json", HttpService:JSONEncode(toSave))
+        end
+    end)
+    WebhookStatus.Text = "✅ Сохранено в BlissFarm_Config.json!"
+end))
+
+trackConnection(TestWebhookBtn.MouseButton1Click:Connect(function()
+    Config.WebhookUrl = WebhookBox.Text:gsub("%s+", "")
+    if Config.WebhookUrl == "" then
+        WebhookStatus.Text = "❌ Сначала вставьте ссылку на Webhook!"
+        return
+    end
+    WebhookStatus.Text = "⏳ Отправка тестового сообщения..."
+    local ok = pcall(Webhook_SendStartup)
+    if ok then
+        WebhookStatus.Text = "✅ Тестовое сообщение отправлено в Discord!"
+    else
+        WebhookStatus.Text = "❌ Ошибка при отправке!"
+    end
+end))
+
+-- ═════════════════════════════════════════════════════════════════════════
+-- ВКЛАДКА 3: ОПЦИИ / НАСТРОЙКИ (Settings)
+-- ═════════════════════════════════════════════════════════════
+local HopToggleBtn = Instance.new("TextButton")
+HopToggleBtn.Size = UDim2.new(1, 0, 0, 32)
+HopToggleBtn.Position = UDim2.new(0, 0, 0, 10)
+HopToggleBtn.BackgroundColor3 = Color3.fromRGB(26, 18, 42)
+HopToggleBtn.TextColor3 = Color3.fromRGB(240, 230, 255)
+HopToggleBtn.Text = "🚀 Server Hop при засухе спавна: " .. (Config.ServerHopEnabled and "ВКЛ" or "ВЫКЛ")
+HopToggleBtn.TextSize = 11
+HopToggleBtn.Font = Enum.Font.GothamBold
+HopToggleBtn.BorderSizePixel = 0
+HopToggleBtn.Parent = PageSettings
+
+local HtCorner = Instance.new("UICorner")
+HtCorner.CornerRadius = UDim.new(0, 8)
+HtCorner.Parent = HopToggleBtn
+
+trackConnection(HopToggleBtn.MouseButton1Click:Connect(function()
+    Config.ServerHopEnabled = not Config.ServerHopEnabled
+    HopToggleBtn.Text = "🚀 Server Hop при засухе спавна: " .. (Config.ServerHopEnabled and "ВКЛ" or "ВЫКЛ")
+end))
+
+local InfoCard = Instance.new("TextLabel")
+InfoCard.Size = UDim2.new(1, 0, 0, 70)
+InfoCard.Position = UDim2.new(0, 0, 0, 52)
+InfoCard.BackgroundColor3 = Color3.fromRGB(20, 14, 32)
+InfoCard.TextColor3 = Color3.fromRGB(192, 132, 252)
+InfoCard.TextSize = 11
+InfoCard.Font = Enum.Font.Gotham
+InfoCard.TextWrapped = true
+InfoCard.Text = "🛡️ Защита: Heartbeat Positioning + Human Jitter\n📦 Лимит: BaseMaxAmounts (16 предметов карты)\n🏹 Автопокупка 10 Lucky Arrow за $75k"
+InfoCard.Parent = PageSettings
+
+local IcCorner = Instance.new("UICorner")
+IcCorner.CornerRadius = UDim.new(0, 8)
+IcCorner.Parent = InfoCard
+
+-- ═════════════════════════════════════════════════════════════════════════
+-- ВКЛАДКА 4: АВТОР / VIP
+-- ═════════════════════════════════════════════════════════════════════════
+local AboutTitle = Instance.new("TextLabel")
+AboutTitle.Size = UDim2.new(1, 0, 0, 26)
+AboutTitle.Position = UDim2.new(0, 0, 0, 8)
+AboutTitle.BackgroundTransparency = 1
+AboutTitle.TextColor3 = Color3.fromRGB(216, 180, 254)
+AboutTitle.TextSize = 14
+AboutTitle.Font = Enum.Font.GothamBold
+AboutTitle.Text = "⚡ BLISS FARM • God-Collector Edition"
+AboutTitle.Parent = PageAbout
+
+local AboutDesc = Instance.new("TextLabel")
+AboutDesc.Size = UDim2.new(1, 0, 0, 48)
+AboutDesc.Position = UDim2.new(0, 0, 0, 36)
+AboutDesc.BackgroundTransparency = 1
+AboutDesc.TextColor3 = Color3.fromRGB(180, 160, 210)
+AboutDesc.TextSize = 11
+AboutDesc.Font = Enum.Font.Gotham
+AboutDesc.TextWrapped = true
+AboutDesc.Text = "Создатель и разработчик: BlissOw\nВерсия: v4.6 Purple Stealth\nСтатус лицензии: Активна (VIP Commercial)"
+AboutDesc.Parent = PageAbout
+
+local CopyRepoBtn = Instance.new("TextButton")
+CopyRepoBtn.Size = UDim2.new(1, 0, 0, 30)
+CopyRepoBtn.Position = UDim2.new(0, 0, 0, 94)
+CopyRepoBtn.BackgroundColor3 = Color3.fromRGB(147, 51, 234)
+CopyRepoBtn.TextColor3 = Color3.new(1, 1, 1)
+CopyRepoBtn.Text = "📋 Скопировать ссылку на GitHub"
+CopyRepoBtn.TextSize = 11
+CopyRepoBtn.Font = Enum.Font.GothamBold
+CopyRepoBtn.BorderSizePixel = 0
+CopyRepoBtn.Parent = PageAbout
+
+local CrCorner = Instance.new("UICorner")
+CrCorner.CornerRadius = UDim.new(0, 6)
+CrCorner.Parent = CopyRepoBtn
+
+trackConnection(CopyRepoBtn.MouseButton1Click:Connect(function()
+    pcall(function()
+        if type(setclipboard) == "function" then
+            setclipboard("https://raw.githubusercontent.com/BlissOw/YBA_FARM/main/main.lua")
+            CopyRepoBtn.Text = "✅ Ссылка скопирована в буфер!"
+            task.wait(1.5)
+            CopyRepoBtn.Text = "📋 Скопировать ссылку на GitHub"
+        end
+    end)
+end))
+
+-- Перетаскивание главного окна
 local dragging, dragInput, dragStart, startPos
 local function updateDrag(input)
     local delta = input.Position - dragStart
@@ -529,7 +969,7 @@ local function updateDrag(input)
     )
 end
 
-trackConnection(MainFrame.InputBegan:Connect(function(input)
+trackConnection(Header.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
@@ -542,7 +982,7 @@ trackConnection(MainFrame.InputBegan:Connect(function(input)
     end
 end))
 
-trackConnection(MainFrame.InputChanged:Connect(function(input)
+trackConnection(Header.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
         dragInput = input
     end
@@ -554,11 +994,12 @@ trackConnection(game:GetService("UserInputService").InputChanged:Connect(functio
     end
 end))
 
+FloatingToggle.Parent = ScreenGui
 MainFrame.Parent = ScreenGui
 ScreenGui.Parent = targetGuiParent
 
 local function updateStatus(line1, line2, line3)
-    if line1 then StatusLine1.Text = line1 end
+    if line1 then ActionBadge.Text = line1 end
     if line2 then StatusLine2.Text = line2 end
     if line3 then StatusLine3.Text = line3 end
 end
@@ -567,11 +1008,11 @@ trackConnection(ToggleButton.MouseButton1Click:Connect(function()
     State.Running = not State.Running
     if State.Running then
         ToggleButton.Text = "■"
-        ToggleButton.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
         updateStatus("▶ РАБОТА ВОЗОБНОВЛЕНА")
     else
         ToggleButton.Text = "▶"
-        ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 180, 80)
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(40, 180, 80)
         updateStatus("⛔ НА ПАУЗЕ", "Нажмите ▶ для продолжения")
     end
 end))

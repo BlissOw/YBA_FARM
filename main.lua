@@ -327,7 +327,7 @@ local function Webhook_SendLuckyArrow(source, count)
             { name = "⏱ Время сессии", value = math.floor((tick() - State.StartTime) / 60) .. " мин", inline = true },
             { name = "📦 Собрано лута", value = tostring(State.TotalPicked) .. " шт.", inline = true },
         },
-        footer = { text = "⚡ Bliss Farm • YBA God-Collector" },
+        footer = { text = "⚡ Bliss Farm • YBA Ultimate" },
         timestamp = DateTime.now():ToIsoDate()
     }
     local ping = Config.WebhookPingOnLucky and "@everyone" or ""
@@ -360,7 +360,7 @@ local function Webhook_SendMilestone(title, desc, color, pingEveryone)
             { name = "💰 Баланс", value = "$" .. tostring(getPlayerMoney()), inline = true },
             { name = "🏹 Lucky Arrows", value = tostring(countLuckyArrows()) .. "/10", inline = true },
         },
-        footer = { text = "⚡ Bliss Farm • YBA God-Collector" },
+        footer = { text = "⚡ Bliss Farm • YBA Ultimate" },
         timestamp = DateTime.now():ToIsoDate()
     }
     local ping = pingEveryone and "@everyone" or ""
@@ -600,7 +600,7 @@ TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.TextColor3 = Color3.fromRGB(216, 180, 254)
 TitleLabel.TextSize = 14
 TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.Text = "⚡ BLISS FARM • YBA God-Collector"
+TitleLabel.Text = "⚡ BLISS FARM • YBA Ultimate Edition"
 TitleLabel.Parent = Header
 
 -- Кнопка Старт/Пауза
@@ -932,7 +932,7 @@ AboutTitle.BackgroundTransparency = 1
 AboutTitle.TextColor3 = Color3.fromRGB(216, 180, 254)
 AboutTitle.TextSize = 14
 AboutTitle.Font = Enum.Font.GothamBold
-AboutTitle.Text = "⚡ BLISS FARM • God-Collector Edition"
+AboutTitle.Text = "⚡ BLISS FARM • Ultimate Edition"
 AboutTitle.Parent = PageAbout
 
 local AboutDesc = Instance.new("TextLabel")
@@ -1767,16 +1767,12 @@ end
 local function farmStep()
     local item, name, _ = findNearestLoot()
     if item then
-        updateStatus("⚡ Взять: " .. name, "Баланс: $" .. getPlayerMoney())
         if grabItem(item, name) then
             State.TotalPicked = State.TotalPicked + 1
             State.LastLootTime = tick()
-            local prefix = KeepItems[name] and "🍀 СОХРАНЕНО: " or "📦 Взято: "
-            updateStatus(prefix .. name)
-            task.wait(0.15 + math.random() * 0.1)
+            task.wait(0.12 + math.random() * 0.08)
         else
             State.Blacklist[item] = tick()
-            updateStatus("⚠ Пропуск занятого лута")
         end
     else
         if tick() - State.LastLootTime > Config.DroughtSeconds then
@@ -1827,14 +1823,14 @@ local mainThread = task.spawn(function()
                 -- ОПРЕДЕЛЕНИЕ ТЕКУЩЕЙ ФАЗЫ (1 -> 2 -> 3 -> ФИНИШ)
                 -- ═════════════════════════════════════════════════════════════
                 if isArrowsGoalReached and isMoneyGoalReached and isAllStacksFull then
-                    -- 🏆 ФИНИШ: GOD ACCOUNT ГОТОВ!
+                    -- 🏆 ФИНИШ: ULTIMATE ACCOUNT ГОТОВ!
                     updateStatus(
-                        "🏆 GOD ACCOUNT ПОЛНОСТЬЮ ГОТОВ!",
+                        "🏆 ULTIMATE ACCOUNT ПОЛНОСТЬЮ ГОТОВ!",
                         string.format("🏹 10/10 Lucky | 💰 $1,000,000 | 📦 %d/%d FULL", completedStacks, totalStacks),
                         "Абсолютный максимум достигнут!"
                     )
                     Webhook_SendMilestone(
-                        "🏆 GOD ACCOUNT ПОЛНОСТЬЮ ГОТОВ!",
+                        "🏆 ULTIMATE ACCOUNT ПОЛНОСТЬЮ ГОТОВ!",
                         string.format("Абсолютный максимум достигнут для `%s`:\n🏹 10/10 Lucky Arrow\n💰 $1,000,000 Баланс\n📦 %d/%d Полных стаков предметов!\nСкрипт успешно завершил работу.", LocalPlayer.Name, completedStacks, totalStacks),
                         10181046,
                         true

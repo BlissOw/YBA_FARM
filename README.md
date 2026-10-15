@@ -1,5 +1,5 @@
 # ⚡ BLISS FARM • YBA (Your Bizarre Adventure)
-> **The Ultimate God-Collector Auto Farm Script for Roblox YBA**  
+> **The Ultimate Auto Farm Script for Roblox YBA**  
 > *Developed by BlissOw*
 
 ---
@@ -20,7 +20,7 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/BlissOw/YBA_FARM/main
 
 ## 💎 Уникальный функционал
 
-### 1. 🏆 Трёхэтапный цикл «God Account»
+### 1. 🏆 Трёхэтапный цикл «Ultimate Account»
 * **Фаза 1 (Охота на Lucky Arrow):** сбор лута, продажа торговцу большими оптовыми партиями от 40 шт., моментальная авто-покупка 10x Lucky Arrow в магазине при накоплении $75,000.
 * **Фаза 2 (Накопление $1,000,000):** стрелы не покупаются, деньги копятся до максимального внутриигрового капа $1,000,000.
 * **Фаза 3 (Full Collector):** торговец полностью отключается! Скрипт добивает стаки абсолютно всех 16 предметов из `BaseMaxAmounts` до 100%.
@@ -38,7 +38,7 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/BlissOw/YBA_FARM/main
 * 🏹 Уведомления о получении Lucky Arrow (с пингом `@everyone`).
 * 🍀 Уведомления о поднятых редких предметах.
 * 💰 Оповещение о достижении $1,000,000.
-* 🏆 Финальный победный рапорт при 100% готовности God Account.
+* 🏆 Финальный победный рапорт при 100% готовности Ultimate Account.
 * 📊 Периодический отчёт о прибыли каждые 15 минут.
 
 ### 5. 😈 Плавающая кнопка-маскот (Mobile & PC)

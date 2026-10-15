@@ -1,7 +1,7 @@
 --[[
     ══════════════════════════════════════════════════════════════════════════
     BLISS FARM — YBA (Your Bizarre Adventure)
-    Version: 4.0 Core Architecture (Engine & Safety Update)
+    Version: 4.1 Speed & Inventory Logic Fix
     Author: BlissOw
     ══════════════════════════════════════════════════════════════════════════
 ]]
@@ -9,8 +9,6 @@
 -- =========================================================================
 -- 1. СИСТЕМА ОЧИСТКИ ПАМЯТИ (Clean Unload / Re-exec Protection)
 -- =========================================================================
--- Если скрипт уже был запущен, корректно останавливаем предыдущую версию,
--- отключаем все слушатели событий и удаляем интерфейс, чтобы не было утечек.
 if _G.BlissFarm_Cleanup and type(_G.BlissFarm_Cleanup) == "function" then
     pcall(_G.BlissFarm_Cleanup)
 end
@@ -43,17 +41,20 @@ local LocalPlayer = Players.LocalPlayer
 -- 3. КОНФИГУРАЦИЯ И ПРЕДМЕТЫ
 -- =========================================================================
 local Config = {
-    Version = "v4.0 Core",
-    TargetMoney = 1000000,
-    TargetArrows = 10,
-    ArrowPrice = 75000,
+    Version = "v4.1 Fast",
+    TargetMoney = 1000000,          -- Целевой баланс: $1,000,000
+    TargetArrows = 10,              -- Целевое кол-во Lucky Arrow: 10
+    ArrowPrice = 75000,             -- Цена Lucky Arrow: $75,000
+    BuyArrowsAfterMoney = true,     -- ВАЖНО: Покупать Lucky Arrow ТОЛЬКО ПОСЛЕ накопления $1M, чтобы не забивать инвентарь!
     HopMinMinutes = 6,
-    DroughtSeconds = 60,
+    DroughtSeconds = 45,            -- Время без лута до смены сервера
     ServerHopEnabled = true,
-    BlacklistTTL = 120,
-    TeleportOffset = 10,
-    SellThreshold = 8,
-    MaxInventorySlots = 10,
+    BlacklistTTL = 60,              -- Время черного списка застрявших айтемов (сек)
+    TeleportOffset = 3.5,           -- 3.5 studs под предметом (в зоне срабатывания ProximityPrompt, без застревания)
+    SellThreshold = 8,              -- Продавать при 8+ предметах
+    MinSellBatch = 2,               -- Не бегать к торговцу ради 1 предмета
+    MaxInventorySlots = 10,         -- Вместимость инвентаря без 2x Gamepass
+    GrabTimeout = 1.2,              -- Максимальное ожидание подбора (сек), чтобы не тупить, если лут украли
 }
 
 local ItemLimits = {
@@ -142,31 +143,28 @@ local State = {
 }
 
 -- =========================================================================
--- 5. БЕЗОПАСНЫЙ СЛОЙ ЭКСПЛОИТА (Executor Compatibility Wrappers)
+-- 5. МОЛНИЕНОСНЫЙ И БЕЗОПАСНЫЙ СЛОЙ ЭКСПЛОИТА (Fast Proximity & Input)
 -- =========================================================================
 local SafePrompt = function(prompt)
     if not prompt or not prompt.Parent then return false end
-    local success = false
 
-    -- 1. Стандартная функция эксплоита
+    -- Быстрый триггер через fireproximityprompt
     if type(fireproximityprompt) == "function" then
-        success = pcall(function()
-            fireproximityprompt(prompt)
-        end)
-        if success then return true end
+        pcall(fireproximityprompt, prompt, 0)
+        pcall(fireproximityprompt, prompt)
+        return true
     end
 
-    -- 2. Fallback через эмуляцию удержания
+    -- Fallback мгновенный сброс удержания
     pcall(function()
-        local prevDuration = prompt.HoldDuration
+        local prev = prompt.HoldDuration
         prompt.HoldDuration = 0
         prompt:InputHoldBegin()
-        task.wait(0.05)
+        task.wait(0.02)
         prompt:InputHoldEnd()
-        prompt.HoldDuration = prevDuration
-        success = true
+        prompt.HoldDuration = prev
     end)
-    return success
+    return true
 end
 
 local SafeClickButton = function(btn)
@@ -200,7 +198,7 @@ local SafeClickButton = function(btn)
             local x = btn.AbsolutePosition.X + btn.AbsoluteSize.X / 2
             local y = btn.AbsolutePosition.Y + btn.AbsoluteSize.Y / 2
             VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
-            task.wait(0.05)
+            task.wait(0.04)
             VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
             clicked = true
         end)
@@ -210,7 +208,7 @@ local SafeClickButton = function(btn)
 end
 
 -- =========================================================================
--- 6. ОБХОД АНТИЧИТА (YBA Remote / Metamethod Hook)
+-- 6. ОБХОД АНТИЧИТА (YBA Metamethod Hook)
 -- =========================================================================
 pcall(function()
     if type(hookmetamethod) == "function" and type(newcclosure) == "function" then
@@ -241,7 +239,7 @@ end
 refreshCharacter()
 
 trackConnection(LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(2.5)
+    task.wait(2)
     if not CleaningUp then
         pcall(refreshCharacter)
         State.Blacklist = {}
@@ -250,7 +248,7 @@ trackConnection(LocalPlayer.CharacterAdded:Connect(function()
 end))
 
 -- =========================================================================
--- 8. ИНТЕРФЕЙС (GUI) С ЗАЩИТОЙ И ПОДДЕРЖКОЙ МОБИЛОК
+-- 8. ИНТЕРФЕЙС (GUI) С ПОДДЕРЖКОЙ DRAG & DROP
 -- =========================================================================
 local targetGuiParent = LocalPlayer:WaitForChild("PlayerGui")
 pcall(function()
@@ -288,7 +286,6 @@ MainStroke.Thickness = 1.2
 MainStroke.Color = Color3.fromRGB(50, 56, 82)
 MainStroke.Parent = MainFrame
 
--- Заголовок
 local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Name = "TitleLabel"
 TitleLabel.Size = UDim2.new(1, -50, 0, 20)
@@ -301,7 +298,6 @@ TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.Text = "⚡ BLISS FARM • " .. Config.Version
 TitleLabel.Parent = MainFrame
 
--- Кнопка Паузы / Старта
 local ToggleButton = Instance.new("TextButton")
 ToggleButton.Name = "ToggleButton"
 ToggleButton.Size = UDim2.new(0, 30, 0, 22)
@@ -318,7 +314,6 @@ local BtnCorner = Instance.new("UICorner")
 BtnCorner.CornerRadius = UDim.new(0, 6)
 BtnCorner.Parent = ToggleButton
 
--- Строки статуса
 local StatusLine1 = Instance.new("TextLabel")
 StatusLine1.Size = UDim2.new(1, -24, 0, 16)
 StatusLine1.Position = UDim2.new(0, 12, 0, 30)
@@ -328,7 +323,7 @@ StatusLine1.TextColor3 = Color3.fromRGB(140, 255, 150)
 StatusLine1.TextSize = 11
 StatusLine1.Font = Enum.Font.GothamSemibold
 StatusLine1.TextWrapped = true
-StatusLine1.Text = "🚀 Инициализация ядра..."
+StatusLine1.Text = "🚀 Быстрый сбор активирован"
 StatusLine1.Parent = MainFrame
 
 local StatusLine2 = Instance.new("TextLabel")
@@ -340,7 +335,7 @@ StatusLine2.TextColor3 = Color3.fromRGB(175, 180, 200)
 StatusLine2.TextSize = 11
 StatusLine2.Font = Enum.Font.Gotham
 StatusLine2.TextWrapped = true
-StatusLine2.Text = "🎒 0 | 🏹 0/10 | 💰 $0"
+StatusLine2.Text = "🎒 0/10 | 🏹 0/10 | 💰 $0"
 StatusLine2.Parent = MainFrame
 
 local StatusLine3 = Instance.new("TextLabel")
@@ -355,7 +350,7 @@ StatusLine3.TextWrapped = true
 StatusLine3.Text = ""
 StatusLine3.Parent = MainFrame
 
--- Поддержка Drag & Drop (перетаскивание окна на ПК и телефонах)
+-- Drag and Drop
 local dragging, dragInput, dragStart, startPos
 local function updateDrag(input)
     local delta = input.Position - dragStart
@@ -416,36 +411,33 @@ end))
 
 local function waitIfPaused()
     while not State.Running and not CleaningUp do
-        task.wait(0.4)
+        task.wait(0.3)
     end
 end
 
 -- =========================================================================
--- 9. БЕЗОПАСНЫЙ ДВИЖОК ПЕРЕМЕЩЕНИЯ (Noclip & Position Locking)
+-- 9. БЫСТРЫЙ ДВИЖОК ПЕРЕМЕЩЕНИЯ (Noclip & Position Locking)
 -- =========================================================================
 local function lockToPosition(targetPos)
     State.LockedPosition = Vector3.new(targetPos.X, targetPos.Y - Config.TeleportOffset, targetPos.Z)
+
+    -- Мгновенно перемещаем CFrame
+    if State.RootPart and State.RootPart.Parent then
+        State.RootPart.CFrame = CFrame.new(State.LockedPosition)
+        State.RootPart.Velocity = Vector3.zero
+        State.RootPart.RotVelocity = Vector3.zero
+    end
+
     if State.LockConnection then
         State.LockConnection:Disconnect()
     end
 
     State.LockConnection = RunService.Heartbeat:Connect(function()
         if not State.Running or not State.LockedPosition or CleaningUp then return end
-        local char = State.Character
         local hrp = State.RootPart
-        if not char or not hrp or not hrp.Parent then return end
+        if not hrp or not hrp.Parent then return end
 
-        local cam = workspace.CurrentCamera
-        local flatDir = Vector3.new(0, 0, -1)
-        if cam then
-            local look = cam.CFrame.LookVector
-            local flat = Vector3.new(look.X, 0, look.Z)
-            if flat.Magnitude > 0.01 then
-                flatDir = flat.Unit
-            end
-        end
-
-        hrp.CFrame = CFrame.new(State.LockedPosition, State.LockedPosition + flatDir)
+        hrp.CFrame = CFrame.new(State.LockedPosition)
         hrp.Velocity = Vector3.zero
         hrp.RotVelocity = Vector3.zero
     end)
@@ -481,15 +473,15 @@ end))
 
 local function teleportTo(pos)
     lockToPosition(pos)
-    task.wait(0.35)
+    task.wait(0.15)
     unlockPosition()
 end
 
 local function rescueIfFalling()
     if State.RootPart and State.RootPart.Parent and State.RootPart.Position.Y < -400 then
-        updateStatus("🕳 Яма обнаружена — спасаю...")
+        updateStatus("🕳 Спасение из ямы...")
         lockToPosition(PatrolPoints[1])
-        task.wait(0.6)
+        task.wait(0.4)
         unlockPosition()
     end
 end
@@ -499,12 +491,12 @@ end
 -- =========================================================================
 local function doServerHop(reason)
     if not Config.ServerHopEnabled then
-        updateStatus("⚠ Server Hop отключен: " .. reason)
+        updateStatus("⚠ Hop выключен: " .. reason)
         return
     end
 
     updateStatus("🚀 Смена сервера: " .. reason)
-    task.wait(1)
+    task.wait(0.5)
 
     local servers = {}
     pcall(function()
@@ -513,7 +505,7 @@ local function doServerHop(reason)
         local data = HttpService:JSONDecode(raw)
         if data and data.data then
             for _, sv in ipairs(data.data) do
-                if sv.playing and sv.maxPlayers and sv.playing < sv.maxPlayers and sv.id ~= game.JobId then
+                if sv.playing and sv.maxPlayers and sv.playing < (sv.maxPlayers - 1) and sv.id ~= game.JobId then
                     table.insert(servers, sv.id)
                 end
             end
@@ -577,6 +569,16 @@ end
 
 local function countLuckyArrows()
     return countItem("Lucky Arrow")
+end
+
+local function countKeepItems()
+    local n = 0
+    for _, tl in ipairs(getInventoryTools()) do
+        if KeepItems[tl.Name] then
+            n = n + 1
+        end
+    end
+    return n
 end
 
 local function countCompletedStacks()
@@ -673,7 +675,7 @@ local function scoreDialogueOption(text)
 end
 
 local function waitForDialogueButtons(timeout)
-    timeout = timeout or 3
+    timeout = timeout or 2.5
     local started = tick()
     while (tick() - started < timeout) and not CleaningUp do
         local dlg = getDialogueGui()
@@ -689,7 +691,7 @@ local function waitForDialogueButtons(timeout)
             end
             if #buttons > 0 then return buttons end
         end
-        task.wait(0.1)
+        task.wait(0.08)
     end
     return {}
 end
@@ -740,7 +742,7 @@ local function closeDialogueIfOpen()
             local t = normalizeText(getButtonText(obj))
             if t:find("leave", 1, true) or t:find("cancel", 1, true) or t:find("goodbye", 1, true) or t:find("exit", 1, true) then
                 SafeClickButton(obj)
-                task.wait(0.2)
+                task.wait(0.15)
                 return
             end
         end
@@ -757,10 +759,10 @@ local function equipTool(itemName)
 
     if tool.Parent == backpack then
         pcall(function() hum:EquipTool(tool) end)
-        task.wait(0.08)
+        task.wait(0.05)
     end
 
-    local deadline = tick() + 0.35
+    local deadline = tick() + 0.3
     while tool.Parent ~= char and tick() < deadline do
         task.wait()
     end
@@ -770,30 +772,30 @@ end
 local function runMerchantSellDialogue(itemName, beforeCount)
     for step = 1, 7 do
         if countItem(itemName) < beforeCount then return true end
-        local buttons = waitForDialogueButtons(step == 1 and 3 or 2)
+        local buttons = waitForDialogueButtons(step == 1 and 2.5 or 1.5)
         if #buttons == 0 then return false end
         local chosen = chooseBestSellButton(buttons)
         if not chosen then return false end
         SafeClickButton(chosen.Button)
-        task.wait(0.45)
+        task.wait(0.35)
     end
     return countItem(itemName) < beforeCount
 end
 
 local function openMerchant(prompt, merchant)
     lockToPosition(MerchantPosition)
-    task.wait(0.45)
+    task.wait(0.3)
     if State.RemoteEvent then
         pcall(function()
             State.RemoteEvent:FireServer("HoldAttack", {Bool = false, Type = "m1"})
         end)
     end
-    task.wait(0.15)
+    task.wait(0.1)
     if prompt then SafePrompt(prompt) end
     if merchant and State.RemoteEvent then
         pcall(function() State.RemoteEvent:FireServer("PromptTriggered", merchant) end)
     end
-    task.wait(0.45)
+    task.wait(0.3)
 end
 
 local function sellAllNow()
@@ -819,13 +821,13 @@ local function sellAllNow()
             equipTool(itemName)
             closeDialogueIfOpen()
             if prompt then SafePrompt(prompt) end
-            task.wait(0.4)
+            task.wait(0.3)
             if runMerchantSellDialogue(itemName, initialCount) then
                 soldAny = true
             end
             closeDialogueIfOpen()
         end
-        task.wait(0.05)
+        task.wait(0.04)
     end
 
     closeDialogueIfOpen()
@@ -836,7 +838,7 @@ end
 local function trySell()
     if sellAllNow() then
         State.SellFails = 0
-        updateStatus("💰 Успешно продано", "Баланс: $" .. getPlayerMoney())
+        updateStatus("💰 Продано успешно", "Баланс: $" .. getPlayerMoney())
     else
         State.SellFails = State.SellFails + 1
         if State.SellFails >= 2 then
@@ -858,7 +860,7 @@ local function buyLuckyArrow()
             State.RemoteEvent:FireServer("PurchaseShopItem", {ItemName = "1x Lucky Arrow"}, 1, 2)
         end)
     end
-    task.wait(2)
+    task.wait(1.5)
     if countLuckyArrows() > before then
         updateStatus("✅ Куплена Lucky Arrow!", "Стрел: " .. countLuckyArrows() .. "/" .. Config.TargetArrows)
         return true
@@ -867,7 +869,7 @@ local function buyLuckyArrow()
 end
 
 -- =========================================================================
--- 14. СКАНЕР ЛУТА И ПОДБОР
+-- 14. МОЛНИЕНОСНЫЙ СКАНЕР ЛУТА И ПОДБОР
 -- =========================================================================
 local function getItemDisplayName(item)
     local prox = item:FindFirstChildWhichIsA("ProximityPrompt", true)
@@ -907,6 +909,7 @@ local function isItemBlacklisted(item)
     return State.Blacklist[item] and (tick() - State.Blacklist[item] < Config.BlacklistTTL)
 end
 
+-- ВАЖНО: Фильтруем застрявший лут прямо при поиске, чтобы не блокировать весь фарм!
 local function findNearestLoot()
     local folder = workspace:FindFirstChild("Item_Spawns")
     folder = folder and folder:FindFirstChild("Items")
@@ -915,7 +918,11 @@ local function findNearestLoot()
     local bestItem, bestName, bestDist, totalCount = nil, nil, math.huge, 0
     for _, item in ipairs(folder:GetChildren()) do
         local name = getItemDisplayName(item)
-        if (SellableItems[name] or KeepItems[name]) and isItemAvailable(item) and not isItemFull(name) then
+        if (SellableItems[name] or KeepItems[name])
+            and isItemAvailable(item)
+            and not isItemFull(name)
+            and not isItemBlacklisted(item) then
+
             totalCount = totalCount + 1
             local pos = getItemPosition(item)
             if pos and State.RootPart then
@@ -931,22 +938,26 @@ local function findNearestLoot()
     return bestItem, bestName, totalCount
 end
 
+-- Быстрый подбор за доли секунды
 local function grabItem(item, name)
     local prox = item:FindFirstChildWhichIsA("ProximityPrompt", true)
     if not prox then return false end
     local pos = getItemPosition(item)
+    if not pos then return false end
+
     local before = countItem(name)
 
-    if pos then
-        lockToPosition(pos)
-        task.wait(0.35)
-    end
+    -- Мгновенная позиция (3.5 studs прямо под предметом)
+    lockToPosition(pos)
 
+    -- Сразу жмем промпт без промедления
     SafePrompt(prox)
 
     local started = tick()
     local success = false
-    while (tick() - started < 5) and not CleaningUp do
+
+    -- Ждем максимум 1.2 секунды. Если предмет украли или не берется — сразу летим дальше!
+    while (tick() - started < Config.GrabTimeout) and not CleaningUp do
         if countItem(name) > before then
             success = true
             break
@@ -954,7 +965,11 @@ local function grabItem(item, name)
         if not item.Parent or not isItemAvailable(item) then
             break
         end
-        task.wait(0.05)
+        -- Дублируем быстрый клик через 0.15с на случай лагов
+        if tick() - started > 0.15 and not success then
+            SafePrompt(prox)
+        end
+        task.wait(0.04)
     end
 
     unlockPosition()
@@ -963,36 +978,36 @@ end
 
 local function farmStep()
     local item, name, _ = findNearestLoot()
-    if item and not isItemBlacklisted(item) then
-        updateStatus("⚡ Подбор: " .. name, "Баланс: $" .. getPlayerMoney())
+    if item then
+        updateStatus("⚡ Взять: " .. name, "Баланс: $" .. getPlayerMoney())
         if grabItem(item, name) then
             State.TotalPicked = State.TotalPicked + 1
             State.LastLootTime = tick()
             local prefix = KeepItems[name] and "🍀 СОХРАНЕНО: " or "📦 Взято: "
             updateStatus(prefix .. name)
-            task.wait(0.2)
+            task.wait(0.04)
         else
             State.Blacklist[item] = tick()
-            updateStatus("⚠ Пропуск застрявшего лута")
+            updateStatus("⚠ Пропуск занятого лута")
         end
     else
         if tick() - State.LastLootTime > Config.DroughtSeconds then
-            doServerHop("Засуха спавна")
-            task.wait(3)
+            doServerHop("Засуха лута")
+            task.wait(2.5)
             pcall(refreshCharacter)
             State.LastLootTime = tick()
         else
             teleportTo(PatrolPoints[math.random(1, #PatrolPoints)])
-            task.wait(0.5)
+            task.wait(0.2)
         end
     end
 end
 
 -- =========================================================================
--- 15. ОСНОВНЫЕ ПОТОКИ (Threads)
+-- 15. УМНЫЙ ЦИКЛ ФАРМА (Smart Money-First Flow)
 -- =========================================================================
 local mainThread = task.spawn(function()
-    updateStatus("🚀 BLISS FARM v4.0", "Ядро запущено без ошибок")
+    updateStatus("🚀 BLISS FARM v4.1", "Умный поток запущен")
     task.wait(1)
 
     local lastFullCount = -1
@@ -1005,51 +1020,67 @@ local mainThread = task.spawn(function()
         if State.Character and State.Character.Parent and State.Humanoid and State.Humanoid.Health > 0 then
             local money = getPlayerMoney()
             local arrows = countLuckyArrows()
+            local keepCount = countKeepItems()
             local sellCount = countSellable()
             local totalSlots = #getInventoryTools()
             local fullStacks = countCompletedStacks()
+            local freeSlots = math.max(0, Config.MaxInventorySlots - totalSlots)
 
             if fullStacks ~= lastFullCount then
                 lastFullCount = fullStacks
                 lastProgressTime = tick()
             end
 
-            StatusLine2.Text = string.format("🎒 %d/%d | 🏹 %d/%d | 📦 %d стаков | 💰 $%d",
-                totalSlots, Config.MaxInventorySlots, arrows, Config.TargetArrows, fullStacks, money)
+            StatusLine2.Text = string.format("🎒 %d/%d (Свободно: %d) | 🏹 %d/%d | 💰 $%d",
+                totalSlots, Config.MaxInventorySlots, freeSlots, arrows, Config.TargetArrows, money)
 
-            local isStackGoalReached = (arrows >= Config.TargetArrows and money >= Config.TargetMoney)
+            local isMoneyGoalReached = (money >= Config.TargetMoney)
+            local isArrowsGoalReached = (arrows >= Config.TargetArrows)
 
-            -- Финал: достигнуты целевые стрелы и деньги, все стаки заполнены
-            if isStackGoalReached and fullStacks >= 14 then
-                updateStatus("🏆 ВСЁ ГОТОВО!", "Достигнут максимум стаков и баланса", "🏹 10 Lucky | 💰 $1M | 📦 Full")
+            -- 🏆 Финал: накоплен $1M и 10 Lucky Arrow
+            if isMoneyGoalReached and isArrowsGoalReached and fullStacks >= 14 then
+                updateStatus("🏆 ЦЕЛЬ ДОСТИГНУТА!", "🏹 10 Lucky | 💰 $1M | 📦 Full Stack")
                 break
             end
 
-            -- Забитый инвентарь без 2x Gamepass
-            if isStackGoalReached and totalSlots >= Config.MaxInventorySlots and fullStacks < 14 and (tick() - lastProgressTime > 180) then
-                updateStatus("🟠 Слоты заполнены", "Для большего количества нужен x2 инвентарь", "Фарм завершен")
-                break
-            end
+            -- ⚠️ ПРОВЕРКА: Если весь рюкзак (10/10) забит несдаваемыми рарками
+            if freeSlots == 0 and sellCount == 0 then
+                if isMoneyGoalReached and not isArrowsGoalReached then
+                    -- Если деньги есть, но слотов нет — покупаем стрелы, если хватает места
+                    updateStatus("🎒 Инвентарь полон", "Ожидание свободного слота")
+                    task.wait(3)
+                else
+                    updateStatus("⚠️ Все 10 слотов заняты рарками!", "Освободите слот для фарма денег")
+                    task.wait(3)
+                end
 
-            if isStackGoalReached then
-                farmStep()
-            elseif sellCount >= Config.SellThreshold or (totalSlots >= Config.MaxInventorySlots and sellCount > 0) then
-                updateStatus("🛒 Продажа (" .. sellCount .. " шт.)", "Слотов занято: " .. totalSlots)
+            -- 💰 ПРОДАЖА ТОРГОВЦУ:
+            -- 1. Набрали 8+ предметов
+            -- 2. ИЛИ инвентарь заполнен до предела (freeSlots == 0), и у нас есть хотя бы 2+ предмета на продажу
+            elseif sellCount >= Config.SellThreshold or (freeSlots == 0 and sellCount >= Config.MinSellBatch) then
+                updateStatus("🛒 Продажа (" .. sellCount .. " шт.)", "Баланс: $" .. money)
                 trySell()
-            elseif totalSlots >= Config.MaxInventorySlots and sellCount == 0 then
-                updateStatus("🎒 Инвентарь полон ценностями", "Ожидание...")
-                task.wait(4)
-            elseif arrows < Config.TargetArrows and money >= Config.ArrowPrice and totalSlots <= 9 then
+
+            -- 🏹 ПОКУПКА LUCKY ARROW:
+            -- Если включен BuyArrowsAfterMoney: покупаем стрелы ТОЛЬКО когда накоплен $1,000,000!
+            -- Это гарантирует, что все 10 слотов свободны для быстрого фарма денег.
+            elseif (not Config.BuyArrowsAfterMoney or isMoneyGoalReached)
+                and arrows < Config.TargetArrows
+                and money >= Config.ArrowPrice
+                and freeSlots > 0 then
+
                 buyLuckyArrow()
-                task.wait(0.5)
+                task.wait(0.4)
+
+            -- ⚡ ФАРМ ЛУТА:
             else
                 farmStep()
             end
         else
-            task.wait(1)
+            task.wait(0.8)
             pcall(refreshCharacter)
         end
-        task.wait(0.15)
+        task.wait(0.08)
     end
 end)
 table.insert(RunningThreads, mainThread)
@@ -1071,16 +1102,13 @@ _G.BlissFarm_Cleanup = function()
     CleaningUp = true
     State.Running = false
 
-    -- Отключаем все события
     for _, conn in ipairs(Connections) do
         pcall(function() conn:Disconnect() end)
     end
     Connections = {}
 
-    -- Останавливаем позиционирование
     unlockPosition()
 
-    -- Удаляем GUI
     pcall(function()
         if ScreenGui and ScreenGui.Parent then
             ScreenGui:Destroy()

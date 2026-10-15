@@ -41,11 +41,10 @@ local LocalPlayer = Players.LocalPlayer
 -- 3. КОНФИГУРАЦИЯ И ПРЕДМЕТЫ
 -- =========================================================================
 local Config = {
-    Version = "v4.2 Value-Pro",
+    Version = "v4.3 God-Collector",
     TargetMoney = 1000000,          -- Целевой баланс: $1,000,000
     TargetArrows = 10,              -- Целевое кол-во Lucky Arrow: 10
     ArrowPrice = 75000,             -- Цена Lucky Arrow: $75,000
-    BuyArrowsAfterMoney = true,     -- ВАЖНО: Покупать Lucky Arrow ТОЛЬКО ПОСЛЕ накопления $1M!
     HopMinMinutes = 6,
     DroughtSeconds = 45,            -- Время без лута до смены сервера
     ServerHopEnabled = true,
@@ -611,13 +610,15 @@ local function countKeepItems()
 end
 
 local function countCompletedStacks()
-    local n = 0
-    for name in pairs(SellableItems) do
-        if countItem(name) >= (ItemLimits[name] or 1) then
-            n = n + 1
+    local completed = 0
+    local total = 0
+    for name, maxLimit in pairs(BaseMaxAmounts) do
+        total = total + 1
+        if countItem(name) >= maxLimit then
+            completed = completed + 1
         end
     end
-    return n
+    return completed, total
 end
 
 local function getPlayerMoney()
@@ -1068,9 +1069,7 @@ local mainThread = task.spawn(function()
             local arrows = countLuckyArrows()
             local keepCount = countKeepItems()
             local sellCount = countSellable()
-            local totalSlots = #getInventoryTools()
-            local fullStacks = countCompletedStacks()
-            local freeSlots = math.max(0, Config.MaxInventorySlots - totalSlots)
+            local completedStacks, totalStacks = countCompletedStacks()
 
             if not State.StartMoney then
                 State.StartMoney = money
@@ -1078,58 +1077,63 @@ local mainThread = task.spawn(function()
             local sessionProfit = math.max(0, money - State.StartMoney)
             local uptimeMinutes = math.floor((tick() - State.StartTime) / 60)
 
-            if fullStacks ~= lastFullCount then
-                lastFullCount = fullStacks
-                lastProgressTime = tick()
-            end
-
-            StatusLine2.Text = string.format("🎒 %d/%d (Свободно: %d) | 🏹 %d/%d | 💰 $%d",
-                totalSlots, Config.MaxInventorySlots, freeSlots, arrows, Config.TargetArrows, money)
-            StatusLine3.Text = string.format("⏱ %dm | 💵 +$%d сессия | 🍀 Рарки: %d",
-                uptimeMinutes, sessionProfit, State.RaresFound)
-
-            local isMoneyGoalReached = (money >= Config.TargetMoney)
             local isArrowsGoalReached = (arrows >= Config.TargetArrows)
+            local isMoneyGoalReached = (money >= Config.TargetMoney)
+            local isAllStacksFull = (completedStacks >= totalStacks)
 
-            -- 🏆 Финал: накоплен $1M и 10 Lucky Arrow
-            if isMoneyGoalReached and isArrowsGoalReached and fullStacks >= 14 then
-                updateStatus("🏆 ЦЕЛЬ ДОСТИГНУТА!", "🏹 10 Lucky | 💰 $1M | 📦 Full Stack")
+            -- ═════════════════════════════════════════════════════════════
+            -- ОПРЕДЕЛЕНИЕ ТЕКУЩЕЙ ФАЗЫ (1 -> 2 -> 3 -> ФИНИШ)
+            -- ═════════════════════════════════════════════════════════════
+            if isArrowsGoalReached and isMoneyGoalReached and isAllStacksFull then
+                -- 🏆 ФИНИШ: GOD ACCOUNT ГОТОВ!
+                updateStatus(
+                    "🏆 GOD ACCOUNT ПОЛНОСТЬЮ ГОТОВ!",
+                    string.format("🏹 10/10 Lucky | 💰 $1,000,000 | 📦 %d/%d FULL", completedStacks, totalStacks),
+                    "Абсолютный максимум достигнут!"
+                )
                 break
-            end
 
-            -- ⚠️ ПРОВЕРКА: Если весь рюкзак (10/10) забит несдаваемыми рарками
-            if freeSlots == 0 and sellCount == 0 then
-                if isMoneyGoalReached and not isArrowsGoalReached then
-                    -- Если деньги есть, но слотов нет — покупаем стрелы, если хватает места
-                    updateStatus("🎒 Инвентарь полон", "Ожидание свободного слота")
-                    task.wait(3)
+            elseif not isArrowsGoalReached then
+                -- 🔹 ФАЗА 1: Охота и покупка 10 Lucky Arrow
+                StatusLine1.Text = string.format("🏹 [Фаза 1/3] Lucky Arrows: %d/%d", arrows, Config.TargetArrows)
+                StatusLine2.Text = string.format("💰 Баланс: $%d / $75,000 на стрелу | 🎒 Продаваемых: %d", money, sellCount)
+
+                -- Если накопили $75,000 — моментально покупаем лаки-стрелу в шопе
+                if money >= Config.ArrowPrice then
+                    buyLuckyArrow()
+                    task.wait(0.4)
+                -- Если набрали 8+ продаваемых предметов — сдаем торговцу
+                elseif sellCount >= Config.SellThreshold then
+                    updateStatus("🛒 Продажа (" .. sellCount .. " шт.) для Lucky Arrow")
+                    trySell()
                 else
-                    updateStatus("⚠️ Все 10 слотов заняты рарками!", "Освободите слот для фарма денег")
-                    task.wait(3)
+                    farmStep()
                 end
 
-            -- 💰 ПРОДАЖА ТОРГОВЦУ:
-            -- 1. Набрали 8+ предметов
-            -- 2. ИЛИ инвентарь заполнен до предела (freeSlots == 0), и у нас есть хотя бы 2+ предмета на продажу
-            elseif sellCount >= Config.SellThreshold or (freeSlots == 0 and sellCount >= Config.MinSellBatch) then
-                updateStatus("🛒 Продажа (" .. sellCount .. " шт.)", "Баланс: $" .. money)
-                trySell()
+            elseif not isMoneyGoalReached then
+                -- 🔹 ФАЗА 2: Накопление $1,000,000 (стрелы уже есть!)
+                StatusLine1.Text = string.format("💰 [Фаза 2/3] Копим $1,000,000 ($%d)", money)
+                StatusLine2.Text = string.format("🏹 10/10 Lucky на базе! | 🎒 Продаваемых: %d/%d", sellCount, Config.SellThreshold)
 
-            -- 🏹 ПОКУПКА LUCKY ARROW:
-            -- Если включен BuyArrowsAfterMoney: покупаем стрелы ТОЛЬКО когда накоплен $1,000,000!
-            -- Это гарантирует, что все 10 слотов свободны для быстрого фарма денег.
-            elseif (not Config.BuyArrowsAfterMoney or isMoneyGoalReached)
-                and arrows < Config.TargetArrows
-                and money >= Config.ArrowPrice
-                and freeSlots > 0 then
+                -- Продаем оптом каждые 8 предметов
+                if sellCount >= Config.SellThreshold then
+                    updateStatus("🛒 Продажа (" .. sellCount .. " шт.) в копилку $1M")
+                    trySell()
+                else
+                    farmStep()
+                end
 
-                buyLuckyArrow()
-                task.wait(0.4)
-
-            -- ⚡ ФАРМ ЛУТА:
             else
+                -- 🔹 ФАЗА 3: Full Collector Mode (Добиваем ВСЕ стаки до упора!)
+                -- ТОРГОВЕЦ ОТКЛЮЧЕН — ни один предмет не продается!
+                StatusLine1.Text = string.format("📦 [Фаза 3/3] Фулл-стаки: %d/%d заполнено", completedStacks, totalStacks)
+                StatusLine2.Text = string.format("🏹 10 Lucky | 💰 $1M кап | Торговец ОТКЛЮЧЕН")
+
                 farmStep()
             end
+
+            StatusLine3.Text = string.format("⏱ %dm | 💵 +$%d сессия | 🍀 Найдено рарок: %d",
+                uptimeMinutes, sessionProfit, State.RaresFound)
         else
             task.wait(0.8)
             pcall(refreshCharacter)

@@ -50,7 +50,7 @@ local Config = {
     ServerHopEnabled = true,
     BlacklistTTL = 60,              -- Время черного списка застрявших айтемов (сек)
     TeleportOffset = 6.0,           -- Безопасная глубина под предметом (без конфликта коллизий и рэйкастов)
-    SellThreshold = 8,              -- Продавать при 8+ предметах
+    SellThreshold = 40,             -- Продавать при 40+ предметах (оптовый фарм без частой беготни)
     MinSellBatch = 2,               -- Не бегать к торговцу ради 1 предмета
     MaxInventorySlots = 10,         -- Вместимость инвентаря без 2x Gamepass
     GrabTimeout = 1.2,              -- Максимальное ожидание подбора (сек)
@@ -145,6 +145,13 @@ local SellableItems = {
 local KeepItems = {
     ["Lucky Arrow"] = true,
     ["Lucky Stone Mask"] = true,
+    ["Pelvis of The Saint's Corpse"] = true,
+    ["Pelvis"] = true,
+    ["Heart of The Saint's Corpse"] = true,
+    ["Heart"] = true,
+    ["Left Arm of The Saint's Corpse"] = true,
+    ["Left Arm"] = true,
+    ["Requiem Arrow"] = true,
 }
 
 local PatrolPoints = {
@@ -1170,7 +1177,7 @@ end
 local function countSellable()
     local n = 0
     for _, tl in ipairs(getInventoryTools()) do
-        if SellableItems[tl.Name] then
+        if SellableItems[tl.Name] and not KeepItems[tl.Name] then
             n = n + 1
         end
     end
@@ -1506,7 +1513,7 @@ local function sellAllNow()
 
     local toSell = {}
     for _, tl in ipairs(getInventoryTools()) do
-        if SellableItems[tl.Name] and not toSell[tl.Name] then
+        if SellableItems[tl.Name] and not KeepItems[tl.Name] and not toSell[tl.Name] then
             toSell[tl.Name] = true
         end
     end

@@ -706,7 +706,7 @@ local function waitForDialogueButtons(timeout)
             end
             if #buttons > 0 then return buttons end
         end
-        task.wait(0.08)
+        task.wait(0.12 + math.random() * 0.08)
     end
     return {}
 end
@@ -757,7 +757,7 @@ local function closeDialogueIfOpen()
             local t = normalizeText(getButtonText(obj))
             if t:find("leave", 1, true) or t:find("cancel", 1, true) or t:find("goodbye", 1, true) or t:find("exit", 1, true) then
                 SafeClickButton(obj)
-                task.wait(0.15)
+                task.wait(0.18 + math.random() * 0.08)
                 return
             end
         end
@@ -774,12 +774,12 @@ local function equipTool(itemName)
 
     if tool.Parent == backpack then
         pcall(function() hum:EquipTool(tool) end)
-        task.wait(0.05)
+        task.wait(0.12 + math.random() * 0.06)
     end
 
-    local deadline = tick() + 0.3
+    local deadline = tick() + 0.35
     while tool.Parent ~= char and tick() < deadline do
-        task.wait()
+        task.wait(0.05)
     end
     return tool.Parent == char and tool or nil
 end
@@ -792,7 +792,7 @@ local function runMerchantSellDialogue(itemName, beforeCount)
         local chosen = chooseBestSellButton(buttons)
         if not chosen then return false end
         SafeClickButton(chosen.Button)
-        task.wait(0.35)
+        task.wait(0.35 + math.random() * 0.1)
     end
     return countItem(itemName) < beforeCount
 end

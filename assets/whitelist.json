@@ -12,10 +12,105 @@
       "tier": "VIP",
       "note": "Lifetime VIP Access"
     },
-    "BLISS-STARVELL-VIP": {
-      "owner": "Starvell Buyer",
+    "BLISS-VIP-KCDU-EWX9": {
+      "owner": "Starvell Buyer #1",
       "tier": "VIP",
-      "note": "Starvell Demo Key"
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-SMVO-UES6": {
+      "owner": "Starvell Buyer #2",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-CQQ5-EBRF": {
+      "owner": "Starvell Buyer #3",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-TQUO-EU7E": {
+      "owner": "Starvell Buyer #4",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-02NE-UPA5": {
+      "owner": "Starvell Buyer #5",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-CG78-TNX1": {
+      "owner": "Starvell Buyer #6",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-HXNN-TFFL": {
+      "owner": "Starvell Buyer #7",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-QMO7-MQVL": {
+      "owner": "Starvell Buyer #8",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-ZBO7-YAWK": {
+      "owner": "Starvell Buyer #9",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-CZYH-RZHU": {
+      "owner": "Starvell Buyer #10",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-7X88-O33U": {
+      "owner": "Starvell Buyer #11",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-71HA-NOQ1": {
+      "owner": "Starvell Buyer #12",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-O46E-G14D": {
+      "owner": "Starvell Buyer #13",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-I40W-HL6J": {
+      "owner": "Starvell Buyer #14",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-QUCR-9W1C": {
+      "owner": "Starvell Buyer #15",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-77DG-3ELQ": {
+      "owner": "Starvell Buyer #16",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-QPDK-K43B": {
+      "owner": "Starvell Buyer #17",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-P4G5-227R": {
+      "owner": "Starvell Buyer #18",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-8MI3-GMG8": {
+      "owner": "Starvell Buyer #19",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-VIP-FKDK-SKZ6": {
+      "owner": "Starvell Buyer #20",
+      "tier": "VIP",
+      "note": "Standard Lifetime VIP License"
     }
   }
 }

@@ -1,0 +1,11 @@
+# Clean development source code (NEVER PUSH TO GITHUB)
+main_dev.lua
+*.dev.lua
+
+# Local keys & config
+BlissFarm_Key.txt
+BlissFarm_Config.json
+
+# Temporary / Scratch
+__pycache__/
+*.tmp

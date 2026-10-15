@@ -178,6 +178,8 @@ local State = {
     RemoteFunction = nil,
     LastKnownMoney = 0,
     BuyFails = 0,
+    LastBuyTime = 0,
+    LastBuyFailTime = 0,
     Blacklist = {},
     LastLootTime = tick(),
     TotalPicked = 0,
@@ -1286,9 +1288,12 @@ local function getPlayerMoney()
                 local clean = txt:match("^%s*([%d,]+)%s*$")
                 if clean then
                     local num = tonumber(clean:gsub(",", ""))
-                    -- Исключаем уровень игрока (1..50)
-                    if num and num > 50 and num <= 1000000 and num > best then
-                        best = num
+                    -- Исключаем уровень игрока (только если имя метки явно связано с Level / Lvl / Rank)
+                    local isLevelLabel = d.Name:lower():find("lvl") or d.Name:lower():find("level") or (d.Parent and (d.Parent.Name:lower():find("lvl") or d.Parent.Name:lower():find("level") or d.Parent.Name:lower():find("rank")))
+                    if num and num >= 0 and num <= 2000000 and not isLevelLabel then
+                        if num > best then
+                            best = num
+                        end
                     end
                 end
             end
@@ -1609,14 +1614,21 @@ local function buyLuckyArrow()
     end)
 
     task.wait(1.5)
+    closeDialogueIfOpen()
+    unlockPosition()
+
     local after = countLuckyArrows()
     if after > before then
         State.BuyFails = 0
+        State.LastBuyTime = tick()
+        -- Мгновенно вычитаем цену $75,000 из кэша, чтобы скрипт сразу знал, что деньги потрачены!
+        State.LastKnownMoney = math.max(0, (State.LastKnownMoney or Config.ArrowPrice) - Config.ArrowPrice)
         updateStatus("✅ Куплена Lucky Arrow!", "Стрел: " .. after .. "/" .. Config.TargetArrows)
         Webhook_SendLuckyArrow("Куплена в магазине ($75,000)", after)
         return true
     else
         State.BuyFails = (State.BuyFails or 0) + 1
+        State.LastBuyFailTime = tick()
         return false
     end
 end
@@ -1786,106 +1798,119 @@ local mainThread = task.spawn(function()
         waitIfPaused()
         rescueIfFalling()
 
-        if State.Character and State.Character.Parent and State.Humanoid and State.Humanoid.Health > 0 then
-            local money = getPlayerMoney()
-            local arrows = countLuckyArrows()
-            local keepCount = countKeepItems()
-            local sellCount = countSellable()
-            local completedStacks, totalStacks = countCompletedStacks()
+        local ok, err = pcall(function()
+            if State.Character and State.Character.Parent and State.Humanoid and State.Humanoid.Health > 0 then
+                local money = getPlayerMoney()
+                local arrows = countLuckyArrows()
+                local keepCount = countKeepItems()
+                local sellCount = countSellable()
+                local completedStacks, totalStacks = countCompletedStacks()
 
-            if not State.StartMoney then
-                State.StartMoney = money
-            end
-            local sessionProfit = math.max(0, money - State.StartMoney)
-            local uptimeMinutes = math.floor((tick() - State.StartTime) / 60)
-
-            local isArrowsGoalReached = (arrows >= Config.TargetArrows)
-            local isMoneyGoalReached = (money >= Config.TargetMoney)
-            local isAllStacksFull = (completedStacks >= totalStacks)
-
-            -- ═════════════════════════════════════════════════════════════
-            -- ОПРЕДЕЛЕНИЕ ТЕКУЩЕЙ ФАЗЫ (1 -> 2 -> 3 -> ФИНИШ)
-            -- ═════════════════════════════════════════════════════════════
-            if isArrowsGoalReached and isMoneyGoalReached and isAllStacksFull then
-                -- 🏆 ФИНИШ: GOD ACCOUNT ГОТОВ!
-                updateStatus(
-                    "🏆 GOD ACCOUNT ПОЛНОСТЬЮ ГОТОВ!",
-                    string.format("🏹 10/10 Lucky | 💰 $1,000,000 | 📦 %d/%d FULL", completedStacks, totalStacks),
-                    "Абсолютный максимум достигнут!"
-                )
-                Webhook_SendMilestone(
-                    "🏆 GOD ACCOUNT ПОЛНОСТЬЮ ГОТОВ!",
-                    string.format("Абсолютный максимум достигнут для `%s`:\n🏹 10/10 Lucky Arrow\n💰 $1,000,000 Баланс\n📦 %d/%d Полных стаков предметов!\nСкрипт успешно завершил работу.", LocalPlayer.Name, completedStacks, totalStacks),
-                    10181046,
-                    true
-                )
-                break
-
-            elseif not isArrowsGoalReached then
-                -- 🔹 ФАЗА 1: Охота и покупка 10 Lucky Arrow
-                StatusLine1.Text = string.format("🏹 [Фаза 1/3] Lucky Arrows: %d/%d", arrows, Config.TargetArrows)
-                StatusLine2.Text = string.format("💰 Баланс: $%d / $75,000 на стрелу | 🎒 Продаваемых: %d", money, sellCount)
-
-                -- Если накопили $75,000 — моментально покупаем лаки-стрелу в шопе
-                if money >= Config.ArrowPrice then
-                    buyLuckyArrow()
-                    task.wait(0.4)
-                -- Если набрали 8+ продаваемых предметов — сдаем торговцу
-                elseif sellCount >= Config.SellThreshold then
-                    updateStatus("🛒 Продажа (" .. sellCount .. " шт.) для Lucky Arrow")
-                    trySell()
-                else
-                    farmStep()
+                if not State.StartMoney then
+                    State.StartMoney = money
                 end
+                local sessionProfit = math.max(0, money - State.StartMoney)
+                local uptimeMinutes = math.floor((tick() - State.StartTime) / 60)
 
-            elseif not isMoneyGoalReached then
-                -- 🔹 ФАЗА 2: Накопление $1,000,000 (стрелы уже есть!)
-                if State.LastPhase < 2 then
-                    State.LastPhase = 2
-                    Webhook_SendMilestone(
-                        "🏹 ФАЗА 1 ЗАВЕРШЕНА: 10/10 LUCKY ARROW!",
-                        "Все 10 Lucky Arrow собраны и лежат в рюкзаке!\nПереходим к Фазе 2: Накопление $1,000,000.",
-                        16766720,
-                        false
+                local isArrowsGoalReached = (arrows >= Config.TargetArrows)
+                local isMoneyGoalReached = (money >= Config.TargetMoney)
+                local isAllStacksFull = (completedStacks >= totalStacks)
+
+                -- ═════════════════════════════════════════════════════════════
+                -- ОПРЕДЕЛЕНИЕ ТЕКУЩЕЙ ФАЗЫ (1 -> 2 -> 3 -> ФИНИШ)
+                -- ═════════════════════════════════════════════════════════════
+                if isArrowsGoalReached and isMoneyGoalReached and isAllStacksFull then
+                    -- 🏆 ФИНИШ: GOD ACCOUNT ГОТОВ!
+                    updateStatus(
+                        "🏆 GOD ACCOUNT ПОЛНОСТЬЮ ГОТОВ!",
+                        string.format("🏹 10/10 Lucky | 💰 $1,000,000 | 📦 %d/%d FULL", completedStacks, totalStacks),
+                        "Абсолютный максимум достигнут!"
                     )
-                end
+                    Webhook_SendMilestone(
+                        "🏆 GOD ACCOUNT ПОЛНОСТЬЮ ГОТОВ!",
+                        string.format("Абсолютный максимум достигнут для `%s`:\n🏹 10/10 Lucky Arrow\n💰 $1,000,000 Баланс\n📦 %d/%d Полных стаков предметов!\nСкрипт успешно завершил работу.", LocalPlayer.Name, completedStacks, totalStacks),
+                        10181046,
+                        true
+                    )
+                    return "DONE"
 
-                StatusLine1.Text = string.format("💰 [Фаза 2/3] Копим $1,000,000 ($%d)", money)
-                StatusLine2.Text = string.format("🏹 10/10 Lucky на базе! | 🎒 Продаваемых: %d/%d", sellCount, Config.SellThreshold)
+                elseif not isArrowsGoalReached then
+                    -- 🔹 ФАЗА 1: Охота и покупка 10 Lucky Arrow
+                    StatusLine1.Text = string.format("🏹 [Фаза 1/3] Lucky Arrows: %d/%d", arrows, Config.TargetArrows)
+                    StatusLine2.Text = string.format("💰 Баланс: $%d / $75,000 на стрелу | 🎒 Продаваемых: %d", money, sellCount)
 
-                -- Продаем оптом каждые 8 предметов
-                if sellCount >= Config.SellThreshold then
-                    updateStatus("🛒 Продажа (" .. sellCount .. " шт.) в копилку $1M")
-                    trySell()
+                    local canBuy = (tick() - (State.LastBuyTime or 0) > 4) and (tick() - (State.LastBuyFailTime or 0) > 8)
+
+                    -- Если накопили $75,000 — покупаем лаки-стрелу в шопе
+                    if money >= Config.ArrowPrice and canBuy then
+                        buyLuckyArrow()
+                        task.wait(0.3)
+                        -- Сразу же продолжаем цикл сбора лута, не простаивая ни секунды!
+                        farmStep()
+                    -- Если набрали 8+ продаваемых предметов — сдаем торговцу
+                    elseif sellCount >= Config.SellThreshold then
+                        updateStatus("🛒 Продажа (" .. sellCount .. " шт.) для Lucky Arrow")
+                        trySell()
+                    else
+                        farmStep()
+                    end
+
+                elseif not isMoneyGoalReached then
+                    -- 🔹 ФАЗА 2: Накопление $1,000,000 (стрелы уже есть!)
+                    if State.LastPhase < 2 then
+                        State.LastPhase = 2
+                        Webhook_SendMilestone(
+                            "🏹 ФАЗА 1 ЗАВЕРШЕНА: 10/10 LUCKY ARROW!",
+                            "Все 10 Lucky Arrow собраны и лежат в рюкзаке!\nПереходим к Фазе 2: Накопление $1,000,000.",
+                            16766720,
+                            false
+                        )
+                    end
+
+                    StatusLine1.Text = string.format("💰 [Фаза 2/3] Копим $1,000,000 ($%d)", money)
+                    StatusLine2.Text = string.format("🏹 10/10 Lucky на базе! | 🎒 Продаваемых: %d/%d", sellCount, Config.SellThreshold)
+
+                    -- Продаем оптом каждые 8 предметов
+                    if sellCount >= Config.SellThreshold then
+                        updateStatus("🛒 Продажа (" .. sellCount .. " шт.) в копилку $1M")
+                        trySell()
+                    else
+                        farmStep()
+                    end
+
                 else
+                    -- 🔹 ФАЗА 3: Full Collector Mode (Добиваем ВСЕ стаки до упора!)
+                    -- ТОРГОВЕЦ ОТКЛЮЧЕН — ни один предмет не продается!
+                    if State.LastPhase < 3 then
+                        State.LastPhase = 3
+                        Webhook_SendMilestone(
+                            "💰 ФАЗА 2 ЗАВЕРШЕНА: $1,000,000 НА СЧЕТУ!",
+                            "Целевой баланс $1,000,000 успешно накоплен!\nТорговец ОТКЛЮЧЕН. Переходим к Фазе 3: Сбор всех 16 стаков до упора.",
+                            65280,
+                            false
+                        )
+                    end
+
+                    StatusLine1.Text = string.format("📦 [Фаза 3/3] Фулл-стаки: %d/%d заполнено", completedStacks, totalStacks)
+                    StatusLine2.Text = string.format("🏹 10 Lucky | 💰 $1M кап | Торговец ОТКЛЮЧЕН")
+
                     farmStep()
                 end
 
+                StatusLine3.Text = string.format("⏱ %dm | 💵 +$%d сессия | 🍀 Найдено рарок: %d",
+                    uptimeMinutes, sessionProfit, State.RaresFound)
             else
-                -- 🔹 ФАЗА 3: Full Collector Mode (Добиваем ВСЕ стаки до упора!)
-                -- ТОРГОВЕЦ ОТКЛЮЧЕН — ни один предмет не продается!
-                if State.LastPhase < 3 then
-                    State.LastPhase = 3
-                    Webhook_SendMilestone(
-                        "💰 ФАЗА 2 ЗАВЕРШЕНА: $1,000,000 НА СЧЕТУ!",
-                        "Целевой баланс $1,000,000 успешно накоплен!\nТорговец ОТКЛЮЧЕН. Переходим к Фазе 3: Сбор всех 16 стаков до упора.",
-                        65280,
-                        false
-                    )
-                end
-
-                StatusLine1.Text = string.format("📦 [Фаза 3/3] Фулл-стаки: %d/%d заполнено", completedStacks, totalStacks)
-                StatusLine2.Text = string.format("🏹 10 Lucky | 💰 $1M кап | Торговец ОТКЛЮЧЕН")
-
-                farmStep()
+                task.wait(0.8)
+                pcall(refreshCharacter)
             end
+        end)
 
-            StatusLine3.Text = string.format("⏱ %dm | 💵 +$%d сессия | 🍀 Найдено рарок: %d",
-                uptimeMinutes, sessionProfit, State.RaresFound)
-        else
-            task.wait(0.8)
-            pcall(refreshCharacter)
+        if ok and err == "DONE" then
+            break
+        elseif not ok then
+            task.wait(0.5)
         end
+
         task.wait(0.15 + math.random() * 0.05)
     end
 end)

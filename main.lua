@@ -1,611 +1,1045 @@
--- BLISS FARM v3.4 | YBA | STACK-SMART
-local CFG={TARGET=1000000, ARROWS=10, ARROW_PRICE=75000,
-HOP_MIN=6, DROUGHT=60, HOP_ENABLED=true, BL_TTL=120, TPOffset=10}
--- ЛИМИТЫ СТАКОВ (из Void)
-local MAX={["Gold Coin"]=45,["Rokakaka"]=25,["Pure Rokakaka"]=10,
-["Mysterious Arrow"]=25,["Diamond"]=30,["Ancient Scroll"]=10,
-["Caesar's Headband"]=10,["Stone Mask"]=10,
-["Rib Cage of The Saint's Corpse"]=20,["Quinton's Glove"]=10,
-["Zeppeli's Hat"]=10,["Lucky Arrow"]=10,["Lucky Stone Mask"]=10,
-["Clackers"]=10,["Steel Ball"]=10,["Dio's Diary"]=10}
-local SELLABLE={["Gold Coin"]=true,["Mysterious Arrow"]=true,["Rokakaka"]=true,
-["Pure Rokakaka"]=true,["Ancient Scroll"]=true,["Quinton's Glove"]=true,
-["Diamond"]=true,["Zeppeli's Hat"]=true,["Clackers"]=true,
-["Rib Cage of The Saint's Corpse"]=true,["Caesar's Headband"]=true,
-["Dio's Diary"]=true,["Steel Ball"]=true,["Stone Mask"]=true}
-local KEEP={["Lucky Arrow"]=true,["Lucky Stone Mask"]=true}
-local TP_POINTS={
-Vector3.new(95,62,72),Vector3.new(-216,10,-66),Vector3.new(-36,-42,523),
-Vector3.new(39,-33,23),Vector3.new(-200,-33,-269),Vector3.new(-65,-33,-606),
-Vector3.new(73,24,-932),Vector3.new(97,14,-531),Vector3.new(253,57,-210),
-Vector3.new(509,14,106),Vector3.new(976,-43,-111),Vector3.new(-655,-21,-750),
-Vector3.new(-190,15,-585),Vector3.new(-182,0,-231)}
-local MERCHANT_POS=Vector3.new(-702,-25,-335)
+--[[
+    ══════════════════════════════════════════════════════════════════════════
+    BLISS FARM — YBA (Your Bizarre Adventure)
+    Version: 4.0 Core Architecture (Engine & Safety Update)
+    Author: BlissOw
+    ══════════════════════════════════════════════════════════════════════════
+]]
 
-local plr=game:GetService("Players").LocalPlayer
-local RS=game:GetService("RunService")
-local VIM=game:GetService("VirtualInputManager")
-local HttpService=game:GetService("HttpService")
-local TeleportService=game:GetService("TeleportService")
-local ReplicatedStorage=game:GetService("ReplicatedStorage")
-local chr,hum,root,re
-local RUNNING=true
-local blacklist={}
-local lastLoot=tick()
-local totalPicked=0
-local sellFails=0
+-- =========================================================================
+-- 1. СИСТЕМА ОЧИСТКИ ПАМЯТИ (Clean Unload / Re-exec Protection)
+-- =========================================================================
+-- Если скрипт уже был запущен, корректно останавливаем предыдущую версию,
+-- отключаем все слушатели событий и удаляем интерфейс, чтобы не было утечек.
+if _G.BlissFarm_Cleanup and type(_G.BlissFarm_Cleanup) == "function" then
+    pcall(_G.BlissFarm_Cleanup)
+end
 
---==== АНТИЧИТ ====
+local CleaningUp = false
+local Connections = {}
+local RunningThreads = {}
+
+local function trackConnection(conn)
+    if conn then
+        table.insert(Connections, conn)
+    end
+    return conn
+end
+
+-- =========================================================================
+-- 2. СЕРВИСЫ ROBLOX
+-- =========================================================================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- =========================================================================
+-- 3. КОНФИГУРАЦИЯ И ПРЕДМЕТЫ
+-- =========================================================================
+local Config = {
+    Version = "v4.0 Core",
+    TargetMoney = 1000000,
+    TargetArrows = 10,
+    ArrowPrice = 75000,
+    HopMinMinutes = 6,
+    DroughtSeconds = 60,
+    ServerHopEnabled = true,
+    BlacklistTTL = 120,
+    TeleportOffset = 10,
+    SellThreshold = 8,
+    MaxInventorySlots = 10,
+}
+
+local ItemLimits = {
+    ["Gold Coin"] = 45,
+    ["Rokakaka"] = 25,
+    ["Pure Rokakaka"] = 10,
+    ["Mysterious Arrow"] = 25,
+    ["Diamond"] = 30,
+    ["Ancient Scroll"] = 10,
+    ["Caesar's Headband"] = 10,
+    ["Stone Mask"] = 10,
+    ["Rib Cage of The Saint's Corpse"] = 20,
+    ["Quinton's Glove"] = 10,
+    ["Zeppeli's Hat"] = 10,
+    ["Lucky Arrow"] = 10,
+    ["Lucky Stone Mask"] = 10,
+    ["Clackers"] = 10,
+    ["Steel Ball"] = 10,
+    ["Dio's Diary"] = 10,
+    ["Left Arm of The Saint's Corpse"] = 10,
+    ["Heart of The Saint's Corpse"] = 10,
+    ["Pelvis of The Saint's Corpse"] = 10,
+    ["Requiem Arrow"] = 10,
+}
+
+local SellableItems = {
+    ["Gold Coin"] = true,
+    ["Mysterious Arrow"] = true,
+    ["Rokakaka"] = true,
+    ["Pure Rokakaka"] = true,
+    ["Ancient Scroll"] = true,
+    ["Quinton's Glove"] = true,
+    ["Diamond"] = true,
+    ["Zeppeli's Hat"] = true,
+    ["Clackers"] = true,
+    ["Rib Cage of The Saint's Corpse"] = true,
+    ["Caesar's Headband"] = true,
+    ["Dio's Diary"] = true,
+    ["Steel Ball"] = true,
+    ["Stone Mask"] = true,
+}
+
+local KeepItems = {
+    ["Lucky Arrow"] = true,
+    ["Lucky Stone Mask"] = true,
+    ["Left Arm of The Saint's Corpse"] = true,
+    ["Heart of The Saint's Corpse"] = true,
+    ["Pelvis of The Saint's Corpse"] = true,
+    ["Requiem Arrow"] = true,
+}
+
+local PatrolPoints = {
+    Vector3.new(95, 62, 72),
+    Vector3.new(-216, 10, -66),
+    Vector3.new(-36, -42, 523),
+    Vector3.new(39, -33, 23),
+    Vector3.new(-200, -33, -269),
+    Vector3.new(-65, -33, -606),
+    Vector3.new(73, 24, -932),
+    Vector3.new(97, 14, -531),
+    Vector3.new(253, 57, -210),
+    Vector3.new(509, 14, 106),
+    Vector3.new(976, -43, -111),
+    Vector3.new(-655, -21, -750),
+    Vector3.new(-190, 15, -585),
+    Vector3.new(-182, 0, -231)
+}
+
+local MerchantPosition = Vector3.new(-702, -25, -335)
+
+-- =========================================================================
+-- 4. СОСТОЯНИЕ (State)
+-- =========================================================================
+local State = {
+    Running = true,
+    Character = nil,
+    Humanoid = nil,
+    RootPart = nil,
+    RemoteEvent = nil,
+    Blacklist = {},
+    LastLootTime = tick(),
+    TotalPicked = 0,
+    SellFails = 0,
+    LockedPosition = nil,
+    LockConnection = nil,
+}
+
+-- =========================================================================
+-- 5. БЕЗОПАСНЫЙ СЛОЙ ЭКСПЛОИТА (Executor Compatibility Wrappers)
+-- =========================================================================
+local SafePrompt = function(prompt)
+    if not prompt or not prompt.Parent then return false end
+    local success = false
+
+    -- 1. Стандартная функция эксплоита
+    if type(fireproximityprompt) == "function" then
+        success = pcall(function()
+            fireproximityprompt(prompt)
+        end)
+        if success then return true end
+    end
+
+    -- 2. Fallback через эмуляцию удержания
+    pcall(function()
+        local prevDuration = prompt.HoldDuration
+        prompt.HoldDuration = 0
+        prompt:InputHoldBegin()
+        task.wait(0.05)
+        prompt:InputHoldEnd()
+        prompt.HoldDuration = prevDuration
+        success = true
+    end)
+    return success
+end
+
+local SafeClickButton = function(btn)
+    if not btn or not btn.Parent then return false end
+    local clicked = false
+
+    local fakeInput = {
+        UserInputType = Enum.UserInputType.MouseButton1,
+        UserInputState = Enum.UserInputState.Begin,
+        Position = Vector2.new(100, 100),
+        Delta = Vector2.new(0, 0)
+    }
+
+    if type(getconnections) == "function" then
+        pcall(function()
+            for _, sigName in ipairs({"MouseButton1Click", "Activated", "InputBegan"}) do
+                local sig = btn[sigName]
+                if sig then
+                    for _, cn in ipairs(getconnections(sig)) do
+                        pcall(function() cn.Function(fakeInput) end)
+                        pcall(function() cn.Function() end)
+                        clicked = true
+                    end
+                end
+            end
+        end)
+    end
+
+    if not clicked and VirtualInputManager then
+        pcall(function()
+            local x = btn.AbsolutePosition.X + btn.AbsoluteSize.X / 2
+            local y = btn.AbsolutePosition.Y + btn.AbsoluteSize.Y / 2
+            VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
+            task.wait(0.05)
+            VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
+            clicked = true
+        end)
+    end
+
+    return clicked
+end
+
+-- =========================================================================
+-- 6. ОБХОД АНТИЧИТА (YBA Remote / Metamethod Hook)
+-- =========================================================================
 pcall(function()
-    local OriginalNamecallTP
-    OriginalNamecallTP = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-        local Arguments = {...}
-        local Method = getnamecallmethod()
-        if Method == "InvokeServer" and Arguments[1] == "idklolbrah2de" then
-            return "  ___XP DE KEY"
-        end
-        return OriginalNamecallTP(self, ...)
-    end))
-end)
-
-local function refreshChar()
-    chr=plr.Character or plr.CharacterAdded:Wait()
-    hum=chr:WaitForChild("Humanoid")
-    root=chr:WaitForChild("HumanoidRootPart")
-    re=chr:WaitForChild("RemoteEvent")
-end
-refreshChar()
-plr.CharacterAdded:Connect(function(c)
-    task.wait(3)
-    pcall(refreshChar)
-    blacklist={}
-    lastLoot=tick()
-end)
-
---==== GUI ====
-for _,g in ipairs(plr:FindFirstChild("PlayerGui"):GetChildren()) do
-    if g.Name=="BlissFarmUI" then g:Destroy() end
-end
-local gui=Instance.new("ScreenGui") gui.Name="BlissFarmUI" gui.ResetOnSpawn=false
-local frame=Instance.new("Frame")
-frame.Size=UDim2.new(0,340,0,90) frame.Position=UDim2.new(0,10,0,86)
-frame.BackgroundColor3=Color3.fromRGB(12,12,18) frame.BackgroundTransparency=0.2
-frame.BorderSizePixel=0
-local corner=Instance.new("UICorner") corner.CornerRadius=UDim.new(0,12) corner.Parent=frame
-local t=Instance.new("TextLabel")
-t.Size=UDim2.new(1,-48,0,18) t.Position=UDim2.new(0,10,0,7)
-t.BackgroundTransparency=1 t.TextXAlignment=Enum.TextXAlignment.Left
-t.TextColor3=Color3.fromRGB(255,215,80) t.TextSize=13 t.Font=Enum.Font.GothamBold
-t.Text="⚡ BLISS FARM v3.4" t.Parent=frame
-local stopBtn=Instance.new("TextButton")
-stopBtn.Size=UDim2.new(0,28,0,20) stopBtn.Position=UDim2.new(1,-36,0,6)
-stopBtn.BackgroundColor3=Color3.fromRGB(200,60,60) stopBtn.Text="■"
-stopBtn.TextColor3=Color3.new(1,1,1) stopBtn.TextSize=12 stopBtn.Font=Enum.Font.GothamBold
-stopBtn.BorderSizePixel=0 stopBtn.Parent=frame
-local sc=Instance.new("UICorner") sc.CornerRadius=UDim.new(0,6) sc.Parent=stopBtn
-local s=Instance.new("TextLabel")
-s.Size=UDim2.new(1,-20,0,16) s.Position=UDim2.new(0,10,0,28)
-s.BackgroundTransparency=1 s.TextXAlignment=Enum.TextXAlignment.Left
-s.TextColor3=Color3.fromRGB(140,255,140) s.TextSize=11 s.Font=Enum.Font.Gotham
-s.TextWrapped=true s.Parent=frame
-local s2=Instance.new("TextLabel")
-s2.Size=UDim2.new(1,-20,0,16) s2.Position=UDim2.new(0,10,0,48)
-s2.BackgroundTransparency=1 s2.TextXAlignment=Enum.TextXAlignment.Left
-s2.TextColor3=Color3.fromRGB(160,160,170) s2.TextSize=11 s2.Font=Enum.Font.Gotham
-s2.TextWrapped=true s2.Parent=frame
-local s3=Instance.new("TextLabel")
-s3.Size=UDim2.new(1,-20,0,16) s3.Position=UDim2.new(0,10,0,66)
-s3.BackgroundTransparency=1 s3.TextXAlignment=Enum.TextXAlignment.Left
-s3.TextColor3=Color3.fromRGB(200,200,220) s3.TextSize=11 s3.Font=Enum.Font.Gotham
-s3.TextWrapped=true s3.Text="" s3.Parent=frame
-frame.Parent=gui gui.Parent=plr:WaitForChild("PlayerGui")
-local function status(a,b,c) s.Text=a if b then s2.Text=b end if c then s3.Text=c end end
-stopBtn.MouseButton1Click:Connect(function()
-    RUNNING=not RUNNING
-    if RUNNING then
-        stopBtn.Text="■" stopBtn.BackgroundColor3=Color3.fromRGB(200,60,60)
-        status("▶ RESUMED")
-    else
-        stopBtn.Text="▶" stopBtn.BackgroundColor3=Color3.fromRGB(60,170,80)
-        status("⛔ STOPPED","тап ▶ чтобы продолжить")
+    if type(hookmetamethod) == "function" and type(newcclosure) == "function" then
+        local originalNamecall
+        originalNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+            local args = {...}
+            local method = getnamecallmethod()
+            if method == "InvokeServer" and args[1] == "idklolbrah2de" then
+                return "  ___XP DE KEY"
+            end
+            return originalNamecall(self, ...)
+        end))
     end
 end)
-local function waitIfStopped() while not RUNNING do task.wait(0.5) end end
 
---==== ДВИЖОК ====
-local lockedPosition=nil local lockConn=nil
-local function lockToPosition(position)
-    lockedPosition=Vector3.new(position.X,position.Y-CFG.TPOffset,position.Z)
-    if lockConn then lockConn:Disconnect() end
-    lockConn=RS.Heartbeat:Connect(function()
-        if not RUNNING or not lockedPosition then return end
-        local char=plr.Character
-        if not char then return end
-        local hrp=char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-        local cam=workspace.CurrentCamera
-        local flatDir=Vector3.new(0,0,-1)
+-- =========================================================================
+-- 7. УПРАВЛЕНИЕ ПЕРСОНАЖЕМ
+-- =========================================================================
+local function refreshCharacter()
+    if CleaningUp then return end
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    State.Character = char
+    State.Humanoid = char:WaitForChild("Humanoid", 10)
+    State.RootPart = char:WaitForChild("HumanoidRootPart", 10)
+    State.RemoteEvent = char:WaitForChild("RemoteEvent", 10)
+end
+
+refreshCharacter()
+
+trackConnection(LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(2.5)
+    if not CleaningUp then
+        pcall(refreshCharacter)
+        State.Blacklist = {}
+        State.LastLootTime = tick()
+    end
+end))
+
+-- =========================================================================
+-- 8. ИНТЕРФЕЙС (GUI) С ЗАЩИТОЙ И ПОДДЕРЖКОЙ МОБИЛОК
+-- =========================================================================
+local targetGuiParent = LocalPlayer:WaitForChild("PlayerGui")
+pcall(function()
+    if CoreGui and pcall(function() return CoreGui:GetChildren() end) then
+        targetGuiParent = CoreGui
+    end
+end)
+
+for _, g in ipairs(targetGuiParent:GetChildren()) do
+    if g.Name == "BlissFarmUI" then
+        g:Destroy()
+    end
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "BlissFarmUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 340, 0, 95)
+MainFrame.Position = UDim2.new(0, 15, 0, 85)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 17, 26)
+MainFrame.BackgroundTransparency = 0.15
+MainFrame.BorderSizePixel = 0
+MainFrame.ClipsDescendants = true
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 10)
+MainCorner.Parent = MainFrame
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Thickness = 1.2
+MainStroke.Color = Color3.fromRGB(50, 56, 82)
+MainStroke.Parent = MainFrame
+
+-- Заголовок
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Size = UDim2.new(1, -50, 0, 20)
+TitleLabel.Position = UDim2.new(0, 12, 0, 8)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.TextColor3 = Color3.fromRGB(255, 204, 77)
+TitleLabel.TextSize = 13
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.Text = "⚡ BLISS FARM • " .. Config.Version
+TitleLabel.Parent = MainFrame
+
+-- Кнопка Паузы / Старта
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Size = UDim2.new(0, 30, 0, 22)
+ToggleButton.Position = UDim2.new(1, -40, 0, 7)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
+ToggleButton.Text = "■"
+ToggleButton.TextColor3 = Color3.new(1, 1, 1)
+ToggleButton.TextSize = 13
+ToggleButton.Font = Enum.Font.GothamBold
+ToggleButton.BorderSizePixel = 0
+ToggleButton.Parent = MainFrame
+
+local BtnCorner = Instance.new("UICorner")
+BtnCorner.CornerRadius = UDim.new(0, 6)
+BtnCorner.Parent = ToggleButton
+
+-- Строки статуса
+local StatusLine1 = Instance.new("TextLabel")
+StatusLine1.Size = UDim2.new(1, -24, 0, 16)
+StatusLine1.Position = UDim2.new(0, 12, 0, 30)
+StatusLine1.BackgroundTransparency = 1
+StatusLine1.TextXAlignment = Enum.TextXAlignment.Left
+StatusLine1.TextColor3 = Color3.fromRGB(140, 255, 150)
+StatusLine1.TextSize = 11
+StatusLine1.Font = Enum.Font.GothamSemibold
+StatusLine1.TextWrapped = true
+StatusLine1.Text = "🚀 Инициализация ядра..."
+StatusLine1.Parent = MainFrame
+
+local StatusLine2 = Instance.new("TextLabel")
+StatusLine2.Size = UDim2.new(1, -24, 0, 16)
+StatusLine2.Position = UDim2.new(0, 12, 0, 50)
+StatusLine2.BackgroundTransparency = 1
+StatusLine2.TextXAlignment = Enum.TextXAlignment.Left
+StatusLine2.TextColor3 = Color3.fromRGB(175, 180, 200)
+StatusLine2.TextSize = 11
+StatusLine2.Font = Enum.Font.Gotham
+StatusLine2.TextWrapped = true
+StatusLine2.Text = "🎒 0 | 🏹 0/10 | 💰 $0"
+StatusLine2.Parent = MainFrame
+
+local StatusLine3 = Instance.new("TextLabel")
+StatusLine3.Size = UDim2.new(1, -24, 0, 16)
+StatusLine3.Position = UDim2.new(0, 12, 0, 70)
+StatusLine3.BackgroundTransparency = 1
+StatusLine3.TextXAlignment = Enum.TextXAlignment.Left
+StatusLine3.TextColor3 = Color3.fromRGB(210, 215, 235)
+StatusLine3.TextSize = 11
+StatusLine3.Font = Enum.Font.Gotham
+StatusLine3.TextWrapped = true
+StatusLine3.Text = ""
+StatusLine3.Parent = MainFrame
+
+-- Поддержка Drag & Drop (перетаскивание окна на ПК и телефонах)
+local dragging, dragInput, dragStart, startPos
+local function updateDrag(input)
+    local delta = input.Position - dragStart
+    MainFrame.Position = UDim2.new(
+        startPos.X.Scale,
+        startPos.X.Offset + delta.X,
+        startPos.Y.Scale,
+        startPos.Y.Offset + delta.Y
+    )
+end
+
+trackConnection(MainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end))
+
+trackConnection(MainFrame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end))
+
+trackConnection(game:GetService("UserInputService").InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        updateDrag(input)
+    end
+end))
+
+MainFrame.Parent = ScreenGui
+ScreenGui.Parent = targetGuiParent
+
+local function updateStatus(line1, line2, line3)
+    if line1 then StatusLine1.Text = line1 end
+    if line2 then StatusLine2.Text = line2 end
+    if line3 then StatusLine3.Text = line3 end
+end
+
+trackConnection(ToggleButton.MouseButton1Click:Connect(function()
+    State.Running = not State.Running
+    if State.Running then
+        ToggleButton.Text = "■"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
+        updateStatus("▶ РАБОТА ВОЗОБНОВЛЕНА")
+    else
+        ToggleButton.Text = "▶"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 180, 80)
+        updateStatus("⛔ НА ПАУЗЕ", "Нажмите ▶ для продолжения")
+    end
+end))
+
+local function waitIfPaused()
+    while not State.Running and not CleaningUp do
+        task.wait(0.4)
+    end
+end
+
+-- =========================================================================
+-- 9. БЕЗОПАСНЫЙ ДВИЖОК ПЕРЕМЕЩЕНИЯ (Noclip & Position Locking)
+-- =========================================================================
+local function lockToPosition(targetPos)
+    State.LockedPosition = Vector3.new(targetPos.X, targetPos.Y - Config.TeleportOffset, targetPos.Z)
+    if State.LockConnection then
+        State.LockConnection:Disconnect()
+    end
+
+    State.LockConnection = RunService.Heartbeat:Connect(function()
+        if not State.Running or not State.LockedPosition or CleaningUp then return end
+        local char = State.Character
+        local hrp = State.RootPart
+        if not char or not hrp or not hrp.Parent then return end
+
+        local cam = workspace.CurrentCamera
+        local flatDir = Vector3.new(0, 0, -1)
         if cam then
-            local look=cam.CFrame.LookVector
-            local flat=Vector3.new(look.X,0,look.Z)
-            if flat.Magnitude>0.01 then flatDir=flat.Unit end
+            local look = cam.CFrame.LookVector
+            local flat = Vector3.new(look.X, 0, look.Z)
+            if flat.Magnitude > 0.01 then
+                flatDir = flat.Unit
+            end
         end
-        hrp.CFrame=CFrame.new(lockedPosition,lockedPosition+flatDir)
-        hrp.Velocity=Vector3.zero
+
+        hrp.CFrame = CFrame.new(State.LockedPosition, State.LockedPosition + flatDir)
+        hrp.Velocity = Vector3.zero
+        hrp.RotVelocity = Vector3.zero
     end)
 end
+
 local function unlockPosition()
-    lockedPosition=nil
-    if lockConn then lockConn:Disconnect() lockConn=nil end
+    State.LockedPosition = nil
+    if State.LockConnection then
+        State.LockConnection:Disconnect()
+        State.LockConnection = nil
+    end
+
     pcall(function()
-        if chr then
-            for _,p in pairs(chr:GetDescendants()) do
-                if p:IsA("BasePart") then p.CanCollide=true end
+        if State.Character then
+            for _, part in ipairs(State.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = true
+                end
             end
         end
     end)
 end
-RS.Stepped:Connect(function()
-    if lockedPosition and chr then
-        for _,p in pairs(chr:GetDescendants()) do
-            if p:IsA("BasePart") then p.CanCollide=false end
+
+trackConnection(RunService.Stepped:Connect(function()
+    if State.LockedPosition and State.Character and not CleaningUp then
+        for _, part in ipairs(State.Character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
         end
     end
-end)
-local function goTo(pos)
+end))
+
+local function teleportTo(pos)
     lockToPosition(pos)
     task.wait(0.35)
     unlockPosition()
 end
+
 local function rescueIfFalling()
-    if root and root.Parent and root.Position.Y<-400 then
-        status("🕳 яма — спасаю")
-        lockToPosition(TP_POINTS[1])
+    if State.RootPart and State.RootPart.Parent and State.RootPart.Position.Y < -400 then
+        updateStatus("🕳 Яма обнаружена — спасаю...")
+        lockToPosition(PatrolPoints[1])
         task.wait(0.6)
         unlockPosition()
     end
 end
 
---==== SERVER HOP ====
+-- =========================================================================
+-- 10. SERVER HOP
+-- =========================================================================
 local function doServerHop(reason)
-    if not CFG.HOP_ENABLED then status("⚠ HOP off: "..reason) return end
-    status("🚀 HOP: "..reason)
+    if not Config.ServerHopEnabled then
+        updateStatus("⚠ Server Hop отключен: " .. reason)
+        return
+    end
+
+    updateStatus("🚀 Смена сервера: " .. reason)
     task.wait(1)
-    local servers={}
+
+    local servers = {}
     pcall(function()
-        local url="https://games.roblox.com/v1/games/"..game.PlaceId.."/servers/Public?sortOrder=Asc&limit=100"
-        local data=HttpService:JSONDecode(game:HttpGet(url))
-        for _,sv in ipairs(data.data) do
-            if sv.playing<sv.maxPlayers and sv.id~=game.JobId then
-                servers[#servers+1]=sv.id
+        local url = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"
+        local raw = game:HttpGet(url)
+        local data = HttpService:JSONDecode(raw)
+        if data and data.data then
+            for _, sv in ipairs(data.data) do
+                if sv.playing and sv.maxPlayers and sv.playing < sv.maxPlayers and sv.id ~= game.JobId then
+                    table.insert(servers, sv.id)
+                end
             end
         end
     end)
-    if #servers>0 then
-        pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId,servers[math.random(1,#servers)],plr) end)
+
+    if #servers > 0 then
+        pcall(function()
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, servers[math.random(1, #servers)], LocalPlayer)
+        end)
     else
-        pcall(function() TeleportService:Teleport(game.PlaceId,plr) end)
+        pcall(function()
+            TeleportService:Teleport(game.PlaceId, LocalPlayer)
+        end)
     end
 end
 
---==== ИНВЕНТАРЬ + ЛИМИТЫ ====
-local function invTools()
-    local list={}
-    for _,cont in ipairs({plr.Backpack,chr}) do
+-- =========================================================================
+-- 11. ИНВЕНТАРЬ И БАЛАНС
+-- =========================================================================
+local function getInventoryTools()
+    local list = {}
+    local containers = {LocalPlayer:FindFirstChild("Backpack"), State.Character}
+    for _, cont in ipairs(containers) do
         if cont then
-            for _,tl in ipairs(cont:GetChildren()) do
-                if tl:IsA("Tool") then list[#list+1]=tl end
+            for _, item in ipairs(cont:GetChildren()) do
+                if item:IsA("Tool") then
+                    table.insert(list, item)
+                end
             end
         end
     end
     return list
 end
+
 local function countItem(name)
-    local n=0
-    for _,tl in ipairs(invTools()) do if tl.Name==name then n=n+1 end end
-    return n
-end
-local function isItemFull(name)
-    local cap=MAX[name]
-    if not cap then return false end
-    return countItem(name)>=cap
-end
-local function sellCount()
-    local n=0
-    for _,tl in ipairs(invTools()) do if SELLABLE[tl.Name] then n=n+1 end end
-    return n
-end
-local function arrowCount() return countItem("Lucky Arrow") end
-local function fullCount()
-    local n=0
-    for name in pairs(SELLABLE) do
-        if countItem(name)>=(MAX[name] or 1) then n=n+1 end
+    local n = 0
+    for _, tl in ipairs(getInventoryTools()) do
+        if tl.Name == name then
+            n = n + 1
+        end
     end
     return n
 end
-local function getMoney()
-    local m=0
-    for _,d in ipairs(plr.PlayerGui:GetDescendants()) do
-        if d:IsA("TextLabel") and not d:IsDescendantOf(gui) then
-            local t2=d.Text
-            if t2:find("$",1,true) and t2:match("^%s*%$?%s*[%d,]+%s*$") then
-                local v=tonumber(t2:gsub("[^%d]",""))
-                if v and v>m then m=v end
+
+local function isItemFull(name)
+    local limit = ItemLimits[name]
+    if not limit then return false end
+    return countItem(name) >= limit
+end
+
+local function countSellable()
+    local n = 0
+    for _, tl in ipairs(getInventoryTools()) do
+        if SellableItems[tl.Name] then
+            n = n + 1
+        end
+    end
+    return n
+end
+
+local function countLuckyArrows()
+    return countItem("Lucky Arrow")
+end
+
+local function countCompletedStacks()
+    local n = 0
+    for name in pairs(SellableItems) do
+        if countItem(name) >= (ItemLimits[name] or 1) then
+            n = n + 1
+        end
+    end
+    return n
+end
+
+local function getPlayerMoney()
+    local best = 0
+    local pgui = LocalPlayer:FindFirstChild("PlayerGui")
+    if pgui then
+        for _, d in ipairs(pgui:GetDescendants()) do
+            if d:IsA("TextLabel") and not d:IsDescendantOf(ScreenGui) then
+                local txt = d.Text
+                if txt:find("$", 1, true) and txt:match("^%s*%$?%s*[%d,]+%s*$") then
+                    local v = tonumber(txt:gsub("[^%d]", ""))
+                    if v and v > best then
+                        best = v
+                    end
+                end
             end
         end
     end
-    return m
+    return best
 end
 
---==== ПРОДАЖА ====
-local function fakeInput()
-    return {UserInputType=Enum.UserInputType.MouseButton1,
-    UserInputState=Enum.UserInputState.Begin,
-    Position=Vector2.new(100,100),Delta=Vector2.new(0,0)}
-end
+-- =========================================================================
+-- 12. ДИАЛОГИ И ПРОДАЖА ТОРГОВЦУ
+-- =========================================================================
 local function normalizeText(text)
-    text=tostring(text or ""):lower()
-    text=text:gsub("[%c%p]"," ")
-    text=text:gsub("%s+"," ")
+    text = tostring(text or ""):lower()
+    text = text:gsub("[%c%p]", " ")
+    text = text:gsub("%s+", " ")
     return text:match("^%s*(.-)%s*$") or ""
 end
+
 local function getButtonText(btn)
     if not btn then return "" end
-    if btn:IsA("TextButton") and btn.Text~="" then return btn.Text end
-    for _,child in ipairs(btn:GetDescendants()) do
-        if child:IsA("TextLabel") and child.Text~="" then return child.Text end
+    if btn:IsA("TextButton") and btn.Text ~= "" then
+        return btn.Text
+    end
+    for _, child in ipairs(btn:GetDescendants()) do
+        if child:IsA("TextLabel") and child.Text ~= "" then
+            return child.Text
+        end
     end
     return ""
 end
+
 local function isActuallyVisible(obj)
     if not obj or not obj.Parent then return false end
-    if obj:IsA("GuiObject") and obj.Visible==false then return false end
-    local parent=obj.Parent
-    while parent and parent~=plr.PlayerGui do
-        if parent:IsA("GuiObject") and parent.Visible==false then return false end
-        parent=parent.Parent
+    if obj:IsA("GuiObject") and obj.Visible == false then return false end
+    local parent = obj.Parent
+    while parent and parent ~= LocalPlayer:FindFirstChild("PlayerGui") do
+        if parent:IsA("GuiObject") and parent.Visible == false then return false end
+        parent = parent.Parent
     end
     return true
 end
+
 local function getDialogueGui()
-    local direct=plr.PlayerGui:FindFirstChild("DialogueGui")
+    local pgui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not pgui then return nil end
+    local direct = pgui:FindFirstChild("DialogueGui")
     if direct then return direct end
-    for _,obj in ipairs(plr.PlayerGui:GetChildren()) do
-        if tostring(obj.Name):lower():find("dialog",1,true) then return obj end
+    for _, obj in ipairs(pgui:GetChildren()) do
+        if tostring(obj.Name):lower():find("dialog", 1, true) then
+            return obj
+        end
     end
     return nil
 end
-local function clickButton(btn)
-    if not btn or not btn.Parent then return false end
-    local done=false
-    pcall(function()
-        for _,sigName in ipairs({"MouseButton1Click","Activated","InputBegan"}) do
-            local sig=btn[sigName]
-            if sig and getconnections then
-                for _,cn in ipairs(getconnections(sig)) do
-                    pcall(function() cn.Function(fakeInput()) end)
-                    pcall(function() cn.Function() end)
-                    done=true
-                end
-            end
-        end
-    end)
-    if not done then
-        pcall(function()
-            local x=btn.AbsolutePosition.X+btn.AbsoluteSize.X/2
-            local y=btn.AbsolutePosition.Y+btn.AbsoluteSize.Y/2
-            VIM:SendMouseButtonEvent(x,y,0,true,game,1)
-            task.wait(0.05)
-            VIM:SendMouseButtonEvent(x,y,0,false,game,1)
-        end)
+
+local NegativeKeywords = {"buy", "leave", "cancel", "nevermind", "never mind", "no thanks", "no thank", "goodbye", "exit", "nothing"}
+local function scoreDialogueOption(text)
+    local n = normalizeText(text)
+    if n == "" then return -math.huge end
+    for _, w in ipairs(NegativeKeywords) do
+        if n:find(w, 1, true) then return -1000 end
     end
-    return true
-end
-local NEGATIVE_WORDS={"buy","leave","cancel","nevermind","never mind","no thanks","no thank","goodbye","exit","nothing"}
-local function containsAny(text,words)
-    for _,w in ipairs(words) do if text:find(w,1,true) then return true end end
-    return false
-end
-local function scoreSellOption(text)
-    local n=normalizeText(text)
-    if n=="" then return -math.huge end
-    if containsAny(n,NEGATIVE_WORDS) then return -1000 end
-    local score=0
-    if n:find("sell",1,true) then score=score+100 end
-    if n:find("all",1,true) or n:find("everything",1,true) or n:find("max",1,true) then score=score+150 end
-    if n:find("deal",1,true) then score=score+90 end
-    if n:find("confirm",1,true) then score=score+80 end
-    if n=="yes" or n:find("yes ",1,true)==1 then score=score+70 end
-    if n=="ok" or n=="okay" or n:find("sure",1,true) then score=score+55 end
+    local score = 0
+    if n:find("sell", 1, true) then score = score + 100 end
+    if n:find("all", 1, true) or n:find("everything", 1, true) or n:find("max", 1, true) then score = score + 150 end
+    if n:find("deal", 1, true) then score = score + 90 end
+    if n:find("confirm", 1, true) then score = score + 80 end
+    if n == "yes" or n:find("yes ", 1, true) == 1 then score = score + 70 end
+    if n == "ok" or n == "okay" or n:find("sure", 1, true) then score = score + 55 end
     return score
 end
+
 local function waitForDialogueButtons(timeout)
-    timeout=timeout or 3
-    local started=tick()
-    while tick()-started<timeout do
-        local dlg=getDialogueGui()
+    timeout = timeout or 3
+    local started = tick()
+    while (tick() - started < timeout) and not CleaningUp do
+        local dlg = getDialogueGui()
         if dlg then
-            local buttons={}
-            for _,obj in ipairs(dlg:GetDescendants()) do
+            local buttons = {}
+            for _, obj in ipairs(dlg:GetDescendants()) do
                 if obj:IsA("GuiButton") and isActuallyVisible(obj) then
-                    local text=getButtonText(obj)
-                    if normalizeText(text)~="" then table.insert(buttons,{Button=obj,Text=text}) end
+                    local text = getButtonText(obj)
+                    if normalizeText(text) ~= "" then
+                        table.insert(buttons, {Button = obj, Text = text})
+                    end
                 end
             end
-            if #buttons>0 then return buttons end
+            if #buttons > 0 then return buttons end
         end
         task.wait(0.1)
     end
     return {}
 end
+
 local function chooseBestSellButton(buttons)
-    local best,bs=nil,-math.huge
-    for _,e in ipairs(buttons) do
-        local s2b=scoreSellOption(e.Text)
-        if s2b>bs then bs=s2b best=e end
-    end
-    if bs<=0 then return nil end
-    return best
-end
-local function findMerchantPrompt()
-    local dlgFolder=ReplicatedStorage:FindFirstChild("Dialogue")
-    if dlgFolder then
-        local merchant=dlgFolder:FindFirstChild("Merchant",true)
-        if merchant then
-            local prompt=merchant:FindFirstChildWhichIsA("ProximityPrompt",true)
-            if prompt then return prompt,merchant end
+    local best, bestScore = nil, -math.huge
+    for _, e in ipairs(buttons) do
+        local score = scoreDialogueOption(e.Text)
+        if score > bestScore then
+            bestScore = score
+            best = e
         end
     end
-    for _,obj in ipairs(workspace:GetDescendants()) do
+    if bestScore <= 0 then return nil end
+    return best
+end
+
+local function findMerchantPrompt()
+    local dlgFolder = ReplicatedStorage:FindFirstChild("Dialogue")
+    if dlgFolder then
+        local merchant = dlgFolder:FindFirstChild("Merchant", true)
+        if merchant then
+            local prompt = merchant:FindFirstChildWhichIsA("ProximityPrompt", true)
+            if prompt then return prompt, merchant end
+        end
+    end
+    for _, obj in ipairs(workspace:GetDescendants()) do
         if obj:IsA("ProximityPrompt") then
-            local parent=obj.Parent
-            local depth=0
-            while parent and parent~=workspace and depth<6 do
-                if tostring(parent.Name):lower():find("merchant",1,true) then return obj,nil end
-                parent=parent.Parent
-                depth=depth+1
+            local parent = obj.Parent
+            local depth = 0
+            while parent and parent ~= workspace and depth < 6 do
+                if tostring(parent.Name):lower():find("merchant", 1, true) then
+                    return obj, nil
+                end
+                parent = parent.Parent
+                depth = depth + 1
             end
         end
     end
-    return nil,nil
+    return nil, nil
 end
+
 local function closeDialogueIfOpen()
-    local dlg=getDialogueGui()
+    local dlg = getDialogueGui()
     if not dlg then return end
-    for _,obj in ipairs(dlg:GetDescendants()) do
+    for _, obj in ipairs(dlg:GetDescendants()) do
         if obj:IsA("GuiButton") and isActuallyVisible(obj) then
-            local t=normalizeText(getButtonText(obj))
-            if t:find("leave",1,true) or t:find("cancel",1,true) or t:find("goodbye",1,true) or t:find("exit",1,true) then
-                clickButton(obj)
+            local t = normalizeText(getButtonText(obj))
+            if t:find("leave", 1, true) or t:find("cancel", 1, true) or t:find("goodbye", 1, true) or t:find("exit", 1, true) then
+                SafeClickButton(obj)
                 task.wait(0.2)
                 return
             end
         end
     end
 end
+
 local function equipTool(itemName)
-    local char=plr.Character
-    local h=char and char:FindFirstChildWhichIsA("Humanoid")
-    if not h then return nil end
-    local tool=plr.Backpack:FindFirstChild(itemName)
-    if not tool and char then tool=char:FindFirstChild(itemName) end
+    local char = State.Character
+    local hum = State.Humanoid
+    if not hum or not char then return nil end
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    local tool = (backpack and backpack:FindFirstChild(itemName)) or char:FindFirstChild(itemName)
     if not tool then return nil end
-    if tool.Parent==plr.Backpack then
-        pcall(function() h:EquipTool(tool) end)
+
+    if tool.Parent == backpack then
+        pcall(function() hum:EquipTool(tool) end)
         task.wait(0.08)
     end
-    local deadline=tick()+0.35
-    while tool.Parent~=char and tick()<deadline do task.wait() end
-    if tool.Parent~=char then return nil end
-    return tool
+
+    local deadline = tick() + 0.35
+    while tool.Parent ~= char and tick() < deadline do
+        task.wait()
+    end
+    return tool.Parent == char and tool or nil
 end
-local function runMerchantSellDialogue(itemName,beforeCount)
-    for step=1,7 do
-        if countItem(itemName)<beforeCount then return true end
-        local buttons=waitForDialogueButtons(step==1 and 3 or 2)
-        if #buttons==0 then return false end
-        local chosen=chooseBestSellButton(buttons)
+
+local function runMerchantSellDialogue(itemName, beforeCount)
+    for step = 1, 7 do
+        if countItem(itemName) < beforeCount then return true end
+        local buttons = waitForDialogueButtons(step == 1 and 3 or 2)
+        if #buttons == 0 then return false end
+        local chosen = chooseBestSellButton(buttons)
         if not chosen then return false end
-        clickButton(chosen.Button)
-        task.wait(0.5)
+        SafeClickButton(chosen.Button)
+        task.wait(0.45)
     end
-    return countItem(itemName)<beforeCount
+    return countItem(itemName) < beforeCount
 end
-local function openMerchant(prompt,merchant)
-    lockToPosition(MERCHANT_POS)
-    task.wait(0.5)
-    pcall(function() re:FireServer("HoldAttack",{Bool=false,Type="m1"}) end)
-    task.wait(0.2)
-    if prompt then pcall(function() fireproximityprompt(prompt) end) end
-    if merchant then pcall(function() re:FireServer("PromptTriggered", merchant) end) end
-    task.wait(0.5)
+
+local function openMerchant(prompt, merchant)
+    lockToPosition(MerchantPosition)
+    task.wait(0.45)
+    if State.RemoteEvent then
+        pcall(function()
+            State.RemoteEvent:FireServer("HoldAttack", {Bool = false, Type = "m1"})
+        end)
+    end
+    task.wait(0.15)
+    if prompt then SafePrompt(prompt) end
+    if merchant and State.RemoteEvent then
+        pcall(function() State.RemoteEvent:FireServer("PromptTriggered", merchant) end)
+    end
+    task.wait(0.45)
 end
+
 local function sellAllNow()
-    local prompt,merchant=findMerchantPrompt()
-    local dlg=ReplicatedStorage:FindFirstChild("Dialogue")
-    if not merchant and dlg then merchant=dlg:FindFirstChild("Merchant") or dlg end
-    openMerchant(prompt,merchant)
-    local toSell={}
-    for _,tl in ipairs(invTools()) do
-        if SELLABLE[tl.Name] and not toSell[tl.Name] then toSell[tl.Name]=true end
+    local prompt, merchant = findMerchantPrompt()
+    local dlg = ReplicatedStorage:FindFirstChild("Dialogue")
+    if not merchant and dlg then
+        merchant = dlg:FindFirstChild("Merchant") or dlg
     end
-    local soldAny=false
+    openMerchant(prompt, merchant)
+
+    local toSell = {}
+    for _, tl in ipairs(getInventoryTools()) do
+        if SellableItems[tl.Name] and not toSell[tl.Name] then
+            toSell[tl.Name] = true
+        end
+    end
+
+    local soldAny = false
     for itemName in pairs(toSell) do
-        if not RUNNING then break end
-        local initialCount=countItem(itemName)
-        if initialCount>0 then
+        if not State.Running or CleaningUp then break end
+        local initialCount = countItem(itemName)
+        if initialCount > 0 then
             equipTool(itemName)
             closeDialogueIfOpen()
-            if prompt then pcall(function() fireproximityprompt(prompt) end) end
-            task.wait(0.45)
-            if runMerchantSellDialogue(itemName,initialCount) then soldAny=true end
+            if prompt then SafePrompt(prompt) end
+            task.wait(0.4)
+            if runMerchantSellDialogue(itemName, initialCount) then
+                soldAny = true
+            end
             closeDialogueIfOpen()
         end
         task.wait(0.05)
     end
+
     closeDialogueIfOpen()
     unlockPosition()
     return soldAny
 end
+
 local function trySell()
     if sellAllNow() then
-        sellFails=0
-        status("💰 продала","💰 $"..getMoney())
+        State.SellFails = 0
+        updateStatus("💰 Успешно продано", "Баланс: $" .. getPlayerMoney())
     else
-        sellFails=sellFails+1
-        if sellFails>=2 then
-            sellFails=0
-            doServerHop("селл застрял")
+        State.SellFails = State.SellFails + 1
+        if State.SellFails >= 2 then
+            State.SellFails = 0
+            doServerHop("Торговец недоступен")
         end
     end
 end
 
---==== ПОКУПКА ====
+-- =========================================================================
+-- 13. ПОКУПКА ПРЕДМЕТОВ (Lucky Arrow)
+-- =========================================================================
 local function buyLuckyArrow()
-    if getMoney()<CFG.ARROW_PRICE then return false end
-    local a0=arrowCount()
-    status("🛒 ПОКУПКА ЛАКИ","🏹 "..a0.."/"..CFG.ARROWS)
-    pcall(function() re:FireServer("PurchaseShopItem",{ItemName="1x Lucky Arrow"},1,2) end)
+    if getPlayerMoney() < Config.ArrowPrice then return false end
+    local before = countLuckyArrows()
+    updateStatus("🛒 Покупка Lucky Arrow", "Стрел: " .. before .. "/" .. Config.TargetArrows)
+    if State.RemoteEvent then
+        pcall(function()
+            State.RemoteEvent:FireServer("PurchaseShopItem", {ItemName = "1x Lucky Arrow"}, 1, 2)
+        end)
+    end
     task.wait(2)
-    if arrowCount()>a0 then
-        status("✅ КУПИЛ!","🏹 "..arrowCount().."/"..CFG.ARROWS)
+    if countLuckyArrows() > before then
+        updateStatus("✅ Куплена Lucky Arrow!", "Стрел: " .. countLuckyArrows() .. "/" .. Config.TargetArrows)
         return true
     end
     return false
 end
 
---==== СКАНЕР (с лимитами!) ====
-local function itemName(item)
-    local prox=item:FindFirstChildWhichIsA("ProximityPrompt",true)
-    if prox and prox.ObjectText and prox.ObjectText~="" then return prox.ObjectText end
+-- =========================================================================
+-- 14. СКАНЕР ЛУТА И ПОДБОР
+-- =========================================================================
+local function getItemDisplayName(item)
+    local prox = item:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if prox and prox.ObjectText and prox.ObjectText ~= "" then
+        return prox.ObjectText
+    end
     return item.Name
 end
-local function isAvailable(item)
-    if item:IsA("BasePart") then return item.Transparency<0.95 end
-    for _,d in ipairs(item:GetChildren()) do
-        if d:IsA("BasePart") and d.Transparency<0.95 then return true end
+
+local function isItemAvailable(item)
+    if item:IsA("BasePart") then
+        return item.Transparency < 0.95
+    end
+    for _, d in ipairs(item:GetChildren()) do
+        if d:IsA("BasePart") and d.Transparency < 0.95 then
+            return true
+        end
     end
     return false
 end
-local function itemPos(item)
-    local pos=nil
+
+local function getItemPosition(item)
+    local pos = nil
     pcall(function()
-        if item:IsA("BasePart") then pos=item.Position
-        elseif item.PrimaryPart then pos=item.PrimaryPart.Position
-        else pos=item:GetPivot().Position end
+        if item:IsA("BasePart") then
+            pos = item.Position
+        elseif item.PrimaryPart then
+            pos = item.PrimaryPart.Position
+        else
+            pos = item:GetPivot().Position
+        end
     end)
     return pos
 end
-local function isBL(item)
-    return blacklist[item] and (tick()-blacklist[item])<CFG.BL_TTL
+
+local function isItemBlacklisted(item)
+    return State.Blacklist[item] and (tick() - State.Blacklist[item] < Config.BlacklistTTL)
 end
-local function findLoot()
-    local folder=workspace:FindFirstChild("Item_Spawns")
-    folder=folder and folder:FindFirstChild("Items")
-    if not folder then return nil,nil,0 end
-    local best,bname,bd,cnt=nil,nil,math.huge,0
-    for _,item in ipairs(folder:GetChildren()) do
-        local nm=itemName(item)
-        if (SELLABLE[nm] or KEEP[nm]) and isAvailable(item) and not isItemFull(nm) then
-            cnt=cnt+1
-            local pos=itemPos(item)
-            if pos and root then
-                local dist=(pos-root.Position).Magnitude
-                if dist<bd then bd,best,bname=dist,item,nm end
+
+local function findNearestLoot()
+    local folder = workspace:FindFirstChild("Item_Spawns")
+    folder = folder and folder:FindFirstChild("Items")
+    if not folder then return nil, nil, 0 end
+
+    local bestItem, bestName, bestDist, totalCount = nil, nil, math.huge, 0
+    for _, item in ipairs(folder:GetChildren()) do
+        local name = getItemDisplayName(item)
+        if (SellableItems[name] or KeepItems[name]) and isItemAvailable(item) and not isItemFull(name) then
+            totalCount = totalCount + 1
+            local pos = getItemPosition(item)
+            if pos and State.RootPart then
+                local dist = (pos - State.RootPart.Position).Magnitude
+                if dist < bestDist then
+                    bestDist = dist
+                    bestItem = item
+                    bestName = name
+                end
             end
         end
     end
-    return best,bname,cnt
+    return bestItem, bestName, totalCount
 end
-local function grab(item,name)
-    local prox=item:FindFirstChildWhichIsA("ProximityPrompt",true)
+
+local function grabItem(item, name)
+    local prox = item:FindFirstChildWhichIsA("ProximityPrompt", true)
     if not prox then return false end
-    local pos=itemPos(item)
-    local c0=countItem(name)
+    local pos = getItemPosition(item)
+    local before = countItem(name)
+
     if pos then
         lockToPosition(pos)
         task.wait(0.35)
     end
-    pcall(function() fireproximityprompt(prox) end)
-    local t0=tick()
-    local ok=false
-    while tick()-t0<5 do
-        if countItem(name)>c0 then ok=true break end
-        if not item.Parent then break end
-        if not isAvailable(item) then break end
+
+    SafePrompt(prox)
+
+    local started = tick()
+    local success = false
+    while (tick() - started < 5) and not CleaningUp do
+        if countItem(name) > before then
+            success = true
+            break
+        end
+        if not item.Parent or not isItemAvailable(item) then
+            break
+        end
         task.wait(0.05)
     end
+
     unlockPosition()
-    return ok
+    return success
 end
 
---==== ШАГ ФАРМА ====
 local function farmStep()
-    local item,name,cnt=findLoot()
-    if item and not isBL(item) then
-        status("⚡ "..name,"💰 $"..getMoney())
-        if grab(item,name) then
-            totalPicked=totalPicked+1
-            lastLoot=tick()
-            status(KEEP[name] and ("🍀 KEEP "..name) or ("📦 +"..name))
+    local item, name, _ = findNearestLoot()
+    if item and not isItemBlacklisted(item) then
+        updateStatus("⚡ Подбор: " .. name, "Баланс: $" .. getPlayerMoney())
+        if grabItem(item, name) then
+            State.TotalPicked = State.TotalPicked + 1
+            State.LastLootTime = tick()
+            local prefix = KeepItems[name] and "🍀 СОХРАНЕНО: " or "📦 Взято: "
+            updateStatus(prefix .. name)
             task.wait(0.2)
         else
-            blacklist[item]=tick()
-            status("⚠ пропуск")
+            State.Blacklist[item] = tick()
+            updateStatus("⚠ Пропуск застрявшего лута")
         end
     else
-        if tick()-lastLoot>CFG.DROUGHT then
-            doServerHop("засуха")
+        if tick() - State.LastLootTime > Config.DroughtSeconds then
+            doServerHop("Засуха спавна")
             task.wait(3)
-            pcall(refreshChar)
-            lastLoot=tick()
+            pcall(refreshCharacter)
+            State.LastLootTime = tick()
         else
-            goTo(TP_POINTS[math.random(1,#TP_POINTS)])
+            teleportTo(PatrolPoints[math.random(1, #PatrolPoints)])
             task.wait(0.5)
         end
     end
 end
 
---==== SMART LOOP v3.4 ====
-task.spawn(function()
-    status("🚀 BLISS FARM v3.4","STACK-SMART")
+-- =========================================================================
+-- 15. ОСНОВНЫЕ ПОТОКИ (Threads)
+-- =========================================================================
+local mainThread = task.spawn(function()
+    updateStatus("🚀 BLISS FARM v4.0", "Ядро запущено без ошибок")
     task.wait(1)
-    local lastProgress=tick()
-    local lastFull=-1
-    while RUNNING do
-        waitIfStopped()
+
+    local lastFullCount = -1
+    local lastProgressTime = tick()
+
+    while not CleaningUp do
+        waitIfPaused()
         rescueIfFalling()
-        if chr and chr.Parent and hum and hum.Health>0 then
-            local money=getMoney()
-            local arrows=arrowCount()
-            local scnt=sellCount()
-            local total=#invTools()
-            local fc=fullCount()
-            if fc~=lastFull then lastFull=fc lastProgress=tick() end
-            s2.Text="🎒 "..total.." | 🏹 "..arrows.."/10 | 📦 "..fc.."/14 | 💰 $"..money
-            local stackMode=(arrows>=CFG.ARROWS and money>=CFG.TARGET)
-            -- 🏆 ФИНАЛ: всё полное
-            if stackMode and fc>=14 then
-                status("🏆 ВСЁ ГОТОВО, БРО!","🏹 10 | 💰 $1M | 📦 14/14 FULL")
-                s3.Text="🏹 10 Lucky | 💰 $1M | 📦 Full Stack"
+
+        if State.Character and State.Character.Parent and State.Humanoid and State.Humanoid.Health > 0 then
+            local money = getPlayerMoney()
+            local arrows = countLuckyArrows()
+            local sellCount = countSellable()
+            local totalSlots = #getInventoryTools()
+            local fullStacks = countCompletedStacks()
+
+            if fullStacks ~= lastFullCount then
+                lastFullCount = fullStacks
+                lastProgressTime = tick()
+            end
+
+            StatusLine2.Text = string.format("🎒 %d/%d | 🏹 %d/%d | 📦 %d стаков | 💰 $%d",
+                totalSlots, Config.MaxInventorySlots, arrows, Config.TargetArrows, fullStacks, money)
+
+            local isStackGoalReached = (arrows >= Config.TargetArrows and money >= Config.TargetMoney)
+
+            -- Финал: достигнуты целевые стрелы и деньги, все стаки заполнены
+            if isStackGoalReached and fullStacks >= 14 then
+                updateStatus("🏆 ВСЁ ГОТОВО!", "Достигнут максимум стаков и баланса", "🏹 10 Lucky | 💰 $1M | 📦 Full")
                 break
             end
-            -- 🟠 слоты кончились (нужен 2x геймпасс)
-            if stackMode and total>=10 and fc<14 and tick()-lastProgress>180 then
-                status("🟠 слоты забиты — нужен 2x геймпасс","📦 "..fc.."/14")
-                s3.Text="Full Stack невозможен без 2x инвентаря"
+
+            -- Забитый инвентарь без 2x Gamepass
+            if isStackGoalReached and totalSlots >= Config.MaxInventorySlots and fullStacks < 14 and (tick() - lastProgressTime > 180) then
+                updateStatus("🟠 Слоты заполнены", "Для большего количества нужен x2 инвентарь", "Фарм завершен")
                 break
             end
-            if stackMode then
-                -- 📦 режим коллекции: НЕ продаём, добираем стаки до MAX
+
+            if isStackGoalReached then
                 farmStep()
-            elseif scnt>=8 or (total>=10 and scnt>0) then
-                status("🛒 продаю "..scnt,"🎒 "..total)
+            elseif sellCount >= Config.SellThreshold or (totalSlots >= Config.MaxInventorySlots and sellCount > 0) then
+                updateStatus("🛒 Продажа (" .. sellCount .. " шт.)", "Слотов занято: " .. totalSlots)
                 trySell()
-            elseif total>=10 and scnt==0 then
-                status("🎒 полон редкими — жду")
-                task.wait(5)
-            elseif arrows<CFG.ARROWS and money>=CFG.ARROW_PRICE and total<=9 then
+            elseif totalSlots >= Config.MaxInventorySlots and sellCount == 0 then
+                updateStatus("🎒 Инвентарь полон ценностями", "Ожидание...")
+                task.wait(4)
+            elseif arrows < Config.TargetArrows and money >= Config.ArrowPrice and totalSlots <= 9 then
                 buyLuckyArrow()
                 task.wait(0.5)
             else
@@ -613,17 +1047,45 @@ task.spawn(function()
             end
         else
             task.wait(1)
-            pcall(refreshChar)
+            pcall(refreshCharacter)
         end
         task.wait(0.15)
     end
 end)
+table.insert(RunningThreads, mainThread)
 
-task.spawn(function()
-    while true do
-        task.wait(CFG.HOP_MIN*60)
-        if CFG.HOP_ENABLED and RUNNING then
-            doServerHop("таймер")
+local hopThread = task.spawn(function()
+    while not CleaningUp do
+        task.wait(Config.HopMinMinutes * 60)
+        if Config.ServerHopEnabled and State.Running and not CleaningUp then
+            doServerHop("Таймер периодической смены")
         end
     end
 end)
+table.insert(RunningThreads, hopThread)
+
+-- =========================================================================
+-- 16. ФУНКЦИЯ ДЛЯ ГЛОБАЛЬНОЙ ВЫГРУЗКИ (Clean Unload Handler)
+-- =========================================================================
+_G.BlissFarm_Cleanup = function()
+    CleaningUp = true
+    State.Running = false
+
+    -- Отключаем все события
+    for _, conn in ipairs(Connections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    Connections = {}
+
+    -- Останавливаем позиционирование
+    unlockPosition()
+
+    -- Удаляем GUI
+    pcall(function()
+        if ScreenGui and ScreenGui.Parent then
+            ScreenGui:Destroy()
+        end
+    end)
+
+    _G.BlissFarm_Cleanup = nil
+end

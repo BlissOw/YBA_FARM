@@ -1,0 +1,21 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-10-15",
+  "keys": {
+    "BLISS-NEO-BOSS": {
+      "owner": "neoworkd",
+      "tier": "OWNER",
+      "note": "Developer / Owner Master Key"
+    },
+    "BLISS-BRO-VIP": {
+      "owner": "Brother",
+      "tier": "VIP",
+      "note": "Lifetime VIP Access"
+    },
+    "BLISS-STARVELL-VIP": {
+      "owner": "Starvell Buyer",
+      "tier": "VIP",
+      "note": "Starvell Demo Key"
+    }
+  }
+}

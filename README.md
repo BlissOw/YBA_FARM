@@ -6,8 +6,12 @@
 
 ## 🚀 Быстрый запуск (Loadstring)
 
-Запустите в вашем эксплоите (Delta, Hydrogen, Codex, Wave, Fluxus, Solara):
+### 💎 Официальный VIP Лоадер (с проверкой лицензии):
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/BlissOw/YBA_FARM/main/loader.lua?t=" .. tostring(tick())))()
+```
 
+### ⚡ Прямой запуск ядра:
 ```lua
 loadstring(game:HttpGet("https://raw.githubusercontent.com/BlissOw/YBA_FARM/main/main.lua?t=" .. tostring(tick())))()
 ```

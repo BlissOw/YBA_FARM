@@ -41,7 +41,7 @@ local LocalPlayer = Players.LocalPlayer
 -- 3. КОНФИГУРАЦИЯ И ПРЕДМЕТЫ
 -- =========================================================================
 local Config = {
-    Version = "v4.3 God-Collector",
+    Version = "v4.4 Stealth",
     TargetMoney = 1000000,          -- Целевой баланс: $1,000,000
     TargetArrows = 10,              -- Целевое кол-во Lucky Arrow: 10
     ArrowPrice = 75000,             -- Цена Lucky Arrow: $75,000
@@ -49,7 +49,7 @@ local Config = {
     DroughtSeconds = 45,            -- Время без лута до смены сервера
     ServerHopEnabled = true,
     BlacklistTTL = 60,              -- Время черного списка застрявших айтемов (сек)
-    TeleportOffset = 3.5,           -- 3.5 studs под предметом (в зоне ProximityPrompt)
+    TeleportOffset = 6.0,           -- Безопасная глубина под предметом (без конфликта коллизий и рэйкастов)
     SellThreshold = 8,              -- Продавать при 8+ предметах
     MinSellBatch = 2,               -- Не бегать к торговцу ради 1 предмета
     MaxInventorySlots = 10,         -- Вместимость инвентаря без 2x Gamepass
@@ -176,23 +176,14 @@ local State = {
 local SafePrompt = function(prompt)
     if not prompt or not prompt.Parent then return false end
 
-    -- Быстрый триггер через fireproximityprompt
+    -- ТОЛЬКО fireproximityprompt, без палевных InputHoldBegin/End
     if type(fireproximityprompt) == "function" then
         pcall(fireproximityprompt, prompt, 0)
         pcall(fireproximityprompt, prompt)
         return true
     end
 
-    -- Fallback мгновенный сброс удержания
-    pcall(function()
-        local prev = prompt.HoldDuration
-        prompt.HoldDuration = 0
-        prompt:InputHoldBegin()
-        task.wait(0.02)
-        prompt:InputHoldEnd()
-        prompt.HoldDuration = prev
-    end)
-    return true
+    return false
 end
 
 local SafeClickButton = function(btn)
@@ -226,7 +217,7 @@ local SafeClickButton = function(btn)
             local x = btn.AbsolutePosition.X + btn.AbsoluteSize.X / 2
             local y = btn.AbsolutePosition.Y + btn.AbsoluteSize.Y / 2
             VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
-            task.wait(0.04)
+            task.wait(0.06 + math.random() * 0.04)
             VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
             clicked = true
         end)
@@ -449,17 +440,11 @@ end
 local function lockToPosition(targetPos)
     State.LockedPosition = Vector3.new(targetPos.X, targetPos.Y - Config.TeleportOffset, targetPos.Z)
 
-    -- Мгновенно перемещаем CFrame
-    if State.RootPart and State.RootPart.Parent then
-        State.RootPart.CFrame = CFrame.new(State.LockedPosition)
-        State.RootPart.Velocity = Vector3.zero
-        State.RootPart.RotVelocity = Vector3.zero
-    end
-
     if State.LockConnection then
         State.LockConnection:Disconnect()
     end
 
+    -- Перемещение ТОЛЬКО внутри Heartbeat (без прямого CFrame снаружи!)
     State.LockConnection = RunService.Heartbeat:Connect(function()
         if not State.Running or not State.LockedPosition or CleaningUp then return end
         local hrp = State.RootPart
@@ -501,7 +486,7 @@ end))
 
 local function teleportTo(pos)
     lockToPosition(pos)
-    task.wait(0.15)
+    task.wait(0.35 + math.random() * 0.1)
     unlockPosition()
 end
 
@@ -857,7 +842,7 @@ local function sellAllNow()
             end
             closeDialogueIfOpen()
         end
-        task.wait(0.04)
+        task.wait(0.12 + math.random() * 0.08)
     end
 
     closeDialogueIfOpen()
@@ -980,7 +965,7 @@ local function findNearestLoot()
     return bestItem, bestName, totalCount
 end
 
--- Быстрый подбор за доли секунды
+-- Подбор с human-like рандомизацией
 local function grabItem(item, name)
     local prox = item:FindFirstChildWhichIsA("ProximityPrompt", true)
     if not prox then return false end
@@ -989,17 +974,15 @@ local function grabItem(item, name)
 
     local before = countItem(name)
 
-    -- Мгновенная позиция (3.5 studs прямо под предметом)
     lockToPosition(pos)
-
-    -- Сразу жмем промпт без промедления
+    task.wait(0.15 + math.random() * 0.08)
     SafePrompt(prox)
 
+    local timeout = Config.GrabTimeout + math.random() * 0.3
     local started = tick()
     local success = false
 
-    -- Ждем максимум 1.2 секунды. Если предмет украли или не берется — сразу летим дальше!
-    while (tick() - started < Config.GrabTimeout) and not CleaningUp do
+    while (tick() - started < timeout) and not CleaningUp do
         if countItem(name) > before then
             success = true
             break
@@ -1007,11 +990,7 @@ local function grabItem(item, name)
         if not item.Parent or not isItemAvailable(item) then
             break
         end
-        -- Дублируем быстрый клик через 0.15с на случай лагов
-        if tick() - started > 0.15 and not success then
-            SafePrompt(prox)
-        end
-        task.wait(0.04)
+        task.wait(0.08 + math.random() * 0.07)
     end
 
     unlockPosition()
@@ -1032,7 +1011,7 @@ local function farmStep()
             State.LastLootTime = tick()
             local prefix = KeepItems[name] and "🍀 СОХРАНЕНО: " or "📦 Взято: "
             updateStatus(prefix .. name)
-            task.wait(0.04)
+            task.wait(0.15 + math.random() * 0.1)
         else
             State.Blacklist[item] = tick()
             updateStatus("⚠ Пропуск занятого лута")
@@ -1045,7 +1024,7 @@ local function farmStep()
             State.LastLootTime = tick()
         else
             teleportTo(PatrolPoints[math.random(1, #PatrolPoints)])
-            task.wait(0.2)
+            task.wait(0.4 + math.random() * 0.15)
         end
     end
 end
@@ -1138,7 +1117,7 @@ local mainThread = task.spawn(function()
             task.wait(0.8)
             pcall(refreshCharacter)
         end
-        task.wait(0.08)
+        task.wait(0.15 + math.random() * 0.05)
     end
 end)
 table.insert(RunningThreads, mainThread)

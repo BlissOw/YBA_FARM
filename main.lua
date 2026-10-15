@@ -41,43 +41,69 @@ local LocalPlayer = Players.LocalPlayer
 -- 3. КОНФИГУРАЦИЯ И ПРЕДМЕТЫ
 -- =========================================================================
 local Config = {
-    Version = "v4.1 Fast",
+    Version = "v4.2 Value-Pro",
     TargetMoney = 1000000,          -- Целевой баланс: $1,000,000
     TargetArrows = 10,              -- Целевое кол-во Lucky Arrow: 10
     ArrowPrice = 75000,             -- Цена Lucky Arrow: $75,000
-    BuyArrowsAfterMoney = true,     -- ВАЖНО: Покупать Lucky Arrow ТОЛЬКО ПОСЛЕ накопления $1M, чтобы не забивать инвентарь!
+    BuyArrowsAfterMoney = true,     -- ВАЖНО: Покупать Lucky Arrow ТОЛЬКО ПОСЛЕ накопления $1M!
     HopMinMinutes = 6,
     DroughtSeconds = 45,            -- Время без лута до смены сервера
     ServerHopEnabled = true,
     BlacklistTTL = 60,              -- Время черного списка застрявших айтемов (сек)
-    TeleportOffset = 3.5,           -- 3.5 studs под предметом (в зоне срабатывания ProximityPrompt, без застревания)
+    TeleportOffset = 3.5,           -- 3.5 studs под предметом (в зоне ProximityPrompt)
     SellThreshold = 8,              -- Продавать при 8+ предметах
     MinSellBatch = 2,               -- Не бегать к торговцу ради 1 предмета
     MaxInventorySlots = 10,         -- Вместимость инвентаря без 2x Gamepass
-    GrabTimeout = 1.2,              -- Максимальное ожидание подбора (сек), чтобы не тупить, если лут украли
+    GrabTimeout = 1.2,              -- Максимальное ожидание подбора (сек)
 }
 
-local ItemLimits = {
-    ["Gold Coin"] = 45,
-    ["Rokakaka"] = 25,
-    ["Pure Rokakaka"] = 10,
-    ["Mysterious Arrow"] = 25,
-    ["Diamond"] = 30,
-    ["Ancient Scroll"] = 10,
-    ["Caesar's Headband"] = 10,
-    ["Stone Mask"] = 10,
+-- Официальная таблица лимитов стаков (BaseMaxAmounts)
+local BaseMaxAmounts = {
+    ["Gold Coin"]                      = 45,
+    ["Rokakaka"]                       = 25,
+    ["Pure Rokakaka"]                  = 10,
+    ["Mysterious Arrow"]               = 25,
+    ["Diamond"]                        = 30,
+    ["Ancient Scroll"]                 = 10,
+    ["Caesar's Headband"]              = 10,
+    ["Stone Mask"]                     = 10,
     ["Rib Cage of The Saint's Corpse"] = 20,
-    ["Quinton's Glove"] = 10,
-    ["Zeppeli's Hat"] = 10,
-    ["Lucky Arrow"] = 10,
-    ["Lucky Stone Mask"] = 10,
-    ["Clackers"] = 10,
-    ["Steel Ball"] = 10,
-    ["Dio's Diary"] = 10,
+    ["Quinton's Glove"]                = 10,
+    ["Zeppeli's Hat"]                  = 10,
+    ["Lucky Arrow"]                    = 10,
+    ["Lucky Stone Mask"]               = 10,
+    ["Clackers"]                       = 10,
+    ["Steel Ball"]                     = 10,
+    ["Dio's Diary"]                    = 10,
     ["Left Arm of The Saint's Corpse"] = 10,
-    ["Heart of The Saint's Corpse"] = 10,
-    ["Pelvis of The Saint's Corpse"] = 10,
-    ["Requiem Arrow"] = 10,
+    ["Heart of The Saint's Corpse"]    = 10,
+    ["Pelvis of The Saint's Corpse"]   = 10,
+    ["Requiem Arrow"]                  = 10,
+}
+local ItemLimits = BaseMaxAmounts
+
+-- Цены предметов при продаже торговцу (для умного выбора лута)
+local ItemPrices = {
+    ["Pure Rokakaka"]                  = 1500,
+    ["Rib Cage of The Saint's Corpse"] = 1200,
+    ["Ancient Scroll"]                 = 1000,
+    ["Quinton's Glove"]                = 1000,
+    ["Zeppeli's Hat"]                  = 1000,
+    ["Clackers"]                       = 1000,
+    ["Caesar's Headband"]              = 1000,
+    ["Dio's Diary"]                    = 1000,
+    ["Steel Ball"]                     = 1000,
+    ["Stone Mask"]                     = 1000,
+    ["Rokakaka"]                       = 600,
+    ["Diamond"]                        = 500,
+    ["Mysterious Arrow"]               = 200,
+    ["Gold Coin"]                      = 120,
+    ["Lucky Arrow"]                    = 1000000, -- Бесценно: абсолютный приоритет
+    ["Lucky Stone Mask"]               = 1000000, -- Бесценно: абсолютный приоритет
+    ["Left Arm of The Saint's Corpse"] = 500000,
+    ["Heart of The Saint's Corpse"]    = 500000,
+    ["Pelvis of The Saint's Corpse"]   = 500000,
+    ["Requiem Arrow"]                  = 500000,
 }
 
 local SellableItems = {
@@ -140,6 +166,9 @@ local State = {
     SellFails = 0,
     LockedPosition = nil,
     LockConnection = nil,
+    StartTime = tick(),
+    StartMoney = nil,
+    RaresFound = 0,
 }
 
 -- =========================================================================
@@ -909,13 +938,13 @@ local function isItemBlacklisted(item)
     return State.Blacklist[item] and (tick() - State.Blacklist[item] < Config.BlacklistTTL)
 end
 
--- ВАЖНО: Фильтруем застрявший лут прямо при поиске, чтобы не блокировать весь фарм!
+-- ВАЖНО: Умный сканер с расчетом приоритета ценности предметов!
 local function findNearestLoot()
     local folder = workspace:FindFirstChild("Item_Spawns")
     folder = folder and folder:FindFirstChild("Items")
     if not folder then return nil, nil, 0 end
 
-    local bestItem, bestName, bestDist, totalCount = nil, nil, math.huge, 0
+    local bestItem, bestName, bestScore, totalCount = nil, nil, -math.huge, 0
     for _, item in ipairs(folder:GetChildren()) do
         local name = getItemDisplayName(item)
         if (SellableItems[name] or KeepItems[name])
@@ -927,8 +956,20 @@ local function findNearestLoot()
             local pos = getItemPosition(item)
             if pos and State.RootPart then
                 local dist = (pos - State.RootPart.Position).Magnitude
-                if dist < bestDist then
-                    bestDist = dist
+                local price = ItemPrices[name] or 100
+
+                -- Расчет приоритета:
+                local score
+                if KeepItems[name] then
+                    -- Lucky Arrow / Lucky Mask имеют наивысший абсолютный приоритет на карте!
+                    score = 10000000 - dist
+                else
+                    -- Дорогие предметы (Pure Roka $1500, Rib Cage $1200) выгоднее монет ($120)
+                    score = (price * 2.5) - dist
+                end
+
+                if score > bestScore then
+                    bestScore = score
                     bestItem = item
                     bestName = name
                 end
@@ -973,6 +1014,11 @@ local function grabItem(item, name)
     end
 
     unlockPosition()
+
+    if success and KeepItems[name] then
+        State.RaresFound = State.RaresFound + 1
+    end
+
     return success
 end
 
@@ -1026,6 +1072,12 @@ local mainThread = task.spawn(function()
             local fullStacks = countCompletedStacks()
             local freeSlots = math.max(0, Config.MaxInventorySlots - totalSlots)
 
+            if not State.StartMoney then
+                State.StartMoney = money
+            end
+            local sessionProfit = math.max(0, money - State.StartMoney)
+            local uptimeMinutes = math.floor((tick() - State.StartTime) / 60)
+
             if fullStacks ~= lastFullCount then
                 lastFullCount = fullStacks
                 lastProgressTime = tick()
@@ -1033,6 +1085,8 @@ local mainThread = task.spawn(function()
 
             StatusLine2.Text = string.format("🎒 %d/%d (Свободно: %d) | 🏹 %d/%d | 💰 $%d",
                 totalSlots, Config.MaxInventorySlots, freeSlots, arrows, Config.TargetArrows, money)
+            StatusLine3.Text = string.format("⏱ %dm | 💵 +$%d сессия | 🍀 Рарки: %d",
+                uptimeMinutes, sessionProfit, State.RaresFound)
 
             local isMoneyGoalReached = (money >= Config.TargetMoney)
             local isArrowsGoalReached = (arrows >= Config.TargetArrows)

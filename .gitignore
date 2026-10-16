@@ -9,3 +9,5 @@ BlissFarm_Config.json
 # Temporary / Scratch
 __pycache__/
 *.tmp
+
+*.bak

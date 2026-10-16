@@ -26,6 +26,7 @@ local LoaderConfig = {
         ["BLISS-NEO-BOSS"] = { owner = "neoworkd", tier = "OWNER" },
         ["BLISS-BRO-VIP"]  = { owner = "Brother",  tier = "VIP" },
         ["BLISS-STARVELL-VIP"] = { owner = "Starvell Customer", tier = "VIP" },
+        ["BLISS-VIP-KIKI-BR9C"] = { owner = "User Custom VIP", tier = "VIP" },
     }
 }
 
@@ -47,9 +48,19 @@ end
 -- Функция запуска основного ядра чита
 local function launchMainScript()
     task.spawn(function()
-        pcall(function()
-            loadstring(game:HttpGet("https://raw.githubusercontent.com/BlissOw/YBA_FARM/main/main.lua?t=" .. tostring(tick())))()
+        local ok, err = pcall(function()
+            local url = "https://raw.githubusercontent.com/BlissOw/YBA_FARM/main/main.lua?t=" .. tostring(tick())
+            local src = game:HttpGet(url)
+            local fn, compileErr = loadstring(src)
+            if not fn then
+                warn("[BLISS LOADER ERROR] Ошибка компиляции main.lua: " .. tostring(compileErr))
+                return
+            end
+            fn()
         end)
+        if not ok then
+            warn("[BLISS LOADER ERROR] Ошибка запуска main.lua: " .. tostring(err))
+        end
     end)
 end
 

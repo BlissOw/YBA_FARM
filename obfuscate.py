@@ -93,7 +93,7 @@ local _bxor = bit32 and bit32.bxor or function(a, b)
     return c
 end
 
-for _i = 1, #{len(string_table)} do
+for _i = 1, #_RAW_DATA do
     local _b = _RAW_DATA[_i]
     local _t = {{}}
     for _j = 1, #_b do

@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updated_at": "2026-10-15",
+  "updated_at": "2026-10-16",
   "keys": {
     "BLISS-NEO-BOSS": {
       "owner": "neoworkd",
@@ -111,6 +111,156 @@
       "owner": "Starvell Buyer #20",
       "tier": "VIP",
       "note": "Standard Lifetime VIP License"
+    },
+    "BLISS-FP-K53V-XI1K": {
+      "owner": "FunPay Buyer #1",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-K9SY-EH3C": {
+      "owner": "FunPay Buyer #2",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-BEY5-3BGT": {
+      "owner": "FunPay Buyer #3",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-GMQX-9A8E": {
+      "owner": "FunPay Buyer #4",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-SALG-TDSQ": {
+      "owner": "FunPay Buyer #5",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-5TRS-Y922": {
+      "owner": "FunPay Buyer #6",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-2MED-8TZF": {
+      "owner": "FunPay Buyer #7",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-12OX-R3DX": {
+      "owner": "FunPay Buyer #8",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-R5S3-SQLO": {
+      "owner": "FunPay Buyer #9",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-FT7T-874Y": {
+      "owner": "FunPay Buyer #10",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-EIKR-QCCR": {
+      "owner": "FunPay Buyer #11",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-EK49-EZYY": {
+      "owner": "FunPay Buyer #12",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-2YEH-U8NP": {
+      "owner": "FunPay Buyer #13",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-QXA3-HU6L": {
+      "owner": "FunPay Buyer #14",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-WWNZ-EWJ6": {
+      "owner": "FunPay Buyer #15",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-2PQN-5ALN": {
+      "owner": "FunPay Buyer #16",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-FF87-UE45": {
+      "owner": "FunPay Buyer #17",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-M88N-2HOP": {
+      "owner": "FunPay Buyer #18",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-HPT8-NBQ9": {
+      "owner": "FunPay Buyer #19",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-JL2A-E6U5": {
+      "owner": "FunPay Buyer #20",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-I246-6CH5": {
+      "owner": "FunPay Buyer #21",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-XWLS-WI32": {
+      "owner": "FunPay Buyer #22",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-TVEU-BWQ4": {
+      "owner": "FunPay Buyer #23",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-O41D-15TY": {
+      "owner": "FunPay Buyer #24",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-CW5V-9JO5": {
+      "owner": "FunPay Buyer #25",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-0MBD-H1UI": {
+      "owner": "FunPay Buyer #26",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-RAKT-5H82": {
+      "owner": "FunPay Buyer #27",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-GDMJ-BANC": {
+      "owner": "FunPay Buyer #28",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-NC6K-J36J": {
+      "owner": "FunPay Buyer #29",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
+    },
+    "BLISS-FP-4A50-2K79": {
+      "owner": "FunPay Buyer #30",
+      "tier": "VIP",
+      "note": "FunPay Lifetime VIP License"
     }
   }
 }

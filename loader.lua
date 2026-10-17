@@ -119,10 +119,10 @@ end
 -- ═════════════════════════════════════════════════════════════
 local LogoAssetId = nil
 pcall(function()
-    local logoFileName = "bliss_demon_logo.png"
+    local logoFileName = "bliss_star_logo.png"
     if type(writefile) == "function" and type(readfile) == "function" and type(getcustomasset) == "function" then
         if not (type(isfile) == "function" and isfile(logoFileName)) then
-            local rawImage = game:HttpGet("https://raw.githubusercontent.com/BlissOw/YBA_FARM/main/assets/logo.png?v=2")
+            local rawImage = game:HttpGet("https://raw.githubusercontent.com/BlissOw/YBA_FARM/main/assets/logo.png?v=3")
             writefile(logoFileName, rawImage)
         end
         LogoAssetId = getcustomasset(logoFileName)
@@ -171,6 +171,11 @@ if LogoAssetId then
     MascotIcon.BackgroundTransparency = 1
     MascotIcon.Image = LogoAssetId
     MascotIcon.ScaleType = Enum.ScaleType.Fit
+    
+    local MascotCorner = Instance.new("UICorner")
+    MascotCorner.CornerRadius = UDim.new(0, 8)
+    MascotCorner.Parent = MascotIcon
+
     MascotIcon.Parent = Header
 end
 
